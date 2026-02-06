@@ -1,0 +1,496 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getGlobalWord } from "../../lib/words";
+import { supabase } from "../../lib/supabase";
+
+type IntervalMin = 60 | 30;
+const ALL_INTERVALS: IntervalMin[] = [60, 30];
+
+// Offset to prevent overlap:
+// 60m -> 0 offset (e.g. 12:00, 13:00)
+// 30m -> +5 minutes offset (e.g. 12:05, 12:35, 13:05, 13:35)
+const OFFSETS_MS: Record<IntervalMin, number> = {
+  60: 0,
+  30: 5 * 60 * 1000,
+};
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function TopBar({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <Link
+        href="/"
+        className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+      >
+        ← Back
+      </Link>
+      <div className="text-[13px] font-semibold text-white/85">{title}</div>
+      <div className="w-[64px]" />
+    </div>
+  );
+}
+
+function msToClock(ms: number) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Interval helpers with offset support (prevents 30/60 overlap)
+function floorToIntervalStartMs(nowMs: number, intervalMin: number, offsetMs: number) {
+  const intervalMs = intervalMin * 60 * 1000;
+  const shifted = nowMs - offsetMs;
+  return Math.floor(shifted / intervalMs) * intervalMs + offsetMs;
+}
+
+function nextDropMs(nowMs: number, intervalMin: number, offsetMs: number) {
+  const intervalMs = intervalMin * 60 * 1000;
+  const shifted = nowMs - offsetMs;
+  return Math.ceil(shifted / intervalMs) * intervalMs + offsetMs;
+}
+
+function readLS<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+function writeLS(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+const ANSWER_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+
+type Settings = {
+  participate: boolean;
+  enabledIntervals: Record<IntervalMin, boolean>;
+};
+
+type ResultState = {
+  ok: boolean; // true if request succeeded (not server error)
+  correct?: boolean; // true/false when ok
+  ms: number;
+  interval: IntervalMin;
+  points: number;
+  serverError?: string;
+};
+
+type SubmitWordResponse =
+  | {
+      ok: true;
+      correct: boolean;
+      points: number;
+      ms_from_start: number;
+      round_start: string;
+      server_now: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      round_start?: string;
+    };
+
+export default function QuickWordPage() {
+  const [participate, setParticipate] = useState<boolean>(true);
+  const [enabledIntervals, setEnabledIntervals] = useState<Record<IntervalMin, boolean>>({
+    60: true,
+    30: true,
+  });
+
+  const [now, setNow] = useState<number>(Date.now());
+  const [answer, setAnswer] = useState("");
+  const [result, setResult] = useState<ResultState | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // prevent repeat notifications per interval+drop
+  const notifiedKeySetRef = useRef<Set<string>>(new Set());
+
+  // load settings
+  useEffect(() => {
+    const saved = readLS<Settings>("quick_word_settings_v3", {
+      participate: true,
+      enabledIntervals: { 60: true, 30: true },
+    });
+    setParticipate(saved.participate);
+    setEnabledIntervals(saved.enabledIntervals);
+  }, []);
+
+  // persist settings
+  useEffect(() => {
+    writeLS("quick_word_settings_v3", { participate, enabledIntervals });
+  }, [participate, enabledIntervals]);
+
+  // ticker
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const selectedIntervals = useMemo(() => {
+    const picked = ALL_INTERVALS.filter((i) => enabledIntervals[i]);
+    // safety: if user unticks all, default to 30
+    return picked.length ? picked : ([30] as IntervalMin[]);
+  }, [enabledIntervals]);
+
+  // active answer window (if any) across selected intervals
+  const activeWindow = useMemo(() => {
+    let best: null | { interval: IntervalMin; startMs: number; endMs: number } = null;
+
+    for (const i of selectedIntervals) {
+      const offset = OFFSETS_MS[i];
+      const startMs = floorToIntervalStartMs(now, i, offset);
+      const endMs = startMs + ANSWER_WINDOW_MS;
+      const inWindow = now >= startMs && now < endMs;
+      if (!inWindow) continue;
+
+      if (!best) best = { interval: i, startMs, endMs };
+      else if (endMs < best.endMs) best = { interval: i, startMs, endMs };
+    }
+    return best;
+  }, [now, selectedIntervals]);
+
+  // next upcoming drop among selected intervals
+  const nextDrop = useMemo(() => {
+    let best: null | { interval: IntervalMin; dropMs: number } = null;
+    for (const i of selectedIntervals) {
+      const offset = OFFSETS_MS[i];
+      const d = nextDropMs(now, i, offset);
+      if (!best || d < best.dropMs) best = { interval: i, dropMs: d };
+    }
+    return best!;
+  }, [now, selectedIntervals]);
+
+  const activeInterval: IntervalMin = useMemo(
+    () => (activeWindow ? activeWindow.interval : nextDrop.interval),
+    [activeWindow, nextDrop.interval]
+  );
+
+  const activeRoundStartMs = useMemo(() => {
+    if (activeWindow) return activeWindow.startMs;
+    return nextDrop.dropMs; // start time of next round
+  }, [activeWindow, nextDrop.dropMs]);
+
+  // Only for UI display (scrambled). Scoring is server-side via RPC.
+  const { word, scrambled } = useMemo(
+    () => getGlobalWord(activeRoundStartMs, activeInterval),
+    [activeRoundStartMs, activeInterval]
+  );
+
+  // reset input/result when round changes
+  const lastKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${activeInterval}:${activeRoundStartMs}`;
+    if (lastKeyRef.current !== key) {
+      lastKeyRef.current = key;
+      setAnswer("");
+      setResult(null);
+      setSubmitting(false);
+    }
+  }, [activeInterval, activeRoundStartMs]);
+
+  // notifications: 1 minute before drop for EACH selected interval
+  useEffect(() => {
+    if (!participate) return;
+    if (!("Notification" in window)) return;
+
+    const oneMin = 60 * 1000;
+
+    for (const i of selectedIntervals) {
+      const offset = OFFSETS_MS[i];
+      const d = nextDropMs(now, i, offset);
+      const msLeft = d - now;
+      const key = `${i}:${d}`;
+
+      if (msLeft <= oneMin && msLeft > 0 && !notifiedKeySetRef.current.has(key)) {
+        notifiedKeySetRef.current.add(key);
+        if (Notification.permission === "granted") {
+          new Notification("Quick — Word incoming", {
+            body: "Word incoming in 1 minute",
+          });
+        }
+      }
+
+      // cleanup old keys
+      if (msLeft < -5 * 60 * 1000) {
+        notifiedKeySetRef.current.delete(key);
+      }
+    }
+  }, [now, participate, selectedIntervals]);
+
+  const requestNotifications = async () => {
+    if (!("Notification" in window)) {
+      alert("Notifications not supported in this browser.");
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      alert("Notifications are disabled. Please allow them to get alerts.");
+    }
+  };
+
+  const timeLabel = useMemo(() => {
+    if (activeWindow) return msToClock(activeWindow.endMs - now);
+    return msToClock(nextDrop.dropMs - now);
+  }, [activeWindow, nextDrop.dropMs, now]);
+
+  const headerRight = useMemo(() => {
+    if (activeWindow) {
+      return `Ends: ${new Date(activeWindow.endMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    }
+    return `Starts: ${new Date(nextDrop.dropMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  }, [activeWindow, nextDrop.dropMs]);
+
+  const onSend = async () => {
+    if (!activeWindow) return;
+    if (submitting) return;
+
+    setSubmitting(true);
+    setResult(null);
+
+    const intervalMin = activeWindow.interval;
+    const userAnswer = answer;
+
+    const { data, error } = await supabase.rpc("submit_word", {
+      p_interval_min: intervalMin,
+      p_answer: userAnswer,
+    });
+
+    if (error) {
+      setResult({
+        ok: false,
+        ms: 0,
+        interval: intervalMin,
+        points: 0,
+        serverError: error.message,
+      });
+      setSubmitting(false);
+      return;
+    }
+
+    const res = data as SubmitWordResponse;
+
+    if (!res || res.ok !== true) {
+      setResult({
+        ok: false,
+        ms: 0,
+        interval: intervalMin,
+        points: 0,
+        serverError: (res as { ok: false; error: string })?.error ?? "unknown_error",
+      });
+      setSubmitting(false);
+      return;
+    }
+
+    setResult({
+      ok: true,
+      correct: res.correct,
+      ms: Number(res.ms_from_start ?? 0),
+      interval: intervalMin,
+      points: Number(res.points ?? 0),
+    });
+
+    setSubmitting(false);
+  };
+
+  const toggleInterval = (i: IntervalMin) => {
+    setEnabledIntervals((prev) => ({ ...prev, [i]: !prev[i] }));
+  };
+
+  return (
+    <main
+      className={cx(
+        "min-h-[100svh] w-full",
+        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      )}
+      style={{
+        paddingTop: "max(env(safe-area-inset-top), 18px)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
+      }}
+    >
+      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+        <header className="pt-2">
+          <TopBar title="Word Quick" />
+          <h1 className="mt-5 text-2xl font-bold tracking-tight">Word Quick</h1>
+          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
+            Intervals: 30 min (offset +5) and 60 min (on the hour). Word is hidden until the round starts. You have{" "}
+            <b>2 minutes</b> to answer.
+          </p>
+        </header>
+
+        {/* Settings */}
+        <section className="mt-5 space-y-3">
+          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <div className="text-[12px] font-semibold text-white/85">Participation</div>
+
+            <label className="mt-3 flex items-center gap-3 text-[13px] text-white/80">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-blue-400"
+                checked={participate}
+                onChange={(e) => setParticipate(e.target.checked)}
+              />
+              Participate in timed words
+            </label>
+
+            <div className="mt-4 text-[12px] font-semibold text-white/85">Intervals (choose any)</div>
+            <div className="mt-2 space-y-2">
+              {ALL_INTERVALS.map((i) => (
+                <label
+                  key={i}
+                  className="flex items-center justify-between rounded-xl border border-white/12 bg-white/5 px-3 py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-blue-400"
+                      checked={!!enabledIntervals[i]}
+                      onChange={() => toggleInterval(i)}
+                    />
+                    <div className="text-[13px] text-white/80">
+                      {i} min {i === 30 ? "(+5 min offset)" : "(on the hour)"}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-white/50">
+                    next:{" "}
+                    {new Date(nextDropMs(now, i, OFFSETS_MS[i])).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <button
+              onClick={requestNotifications}
+              className="mt-3 w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[15px] font-semibold">Enable notifications</div>
+                  <div className="mt-1 text-[12px] text-white/65">Get “Word incoming in 1 minute”</div>
+                </div>
+                <div className="text-white/55">→</div>
+              </div>
+            </button>
+
+            <div className="mt-3 text-[11px] text-white/45">
+              Browser fully closed = not reliable until PWA + Service Worker.
+            </div>
+          </div>
+        </section>
+
+        {/* Round card */}
+        <section className="mt-4 space-y-3">
+          <div
+            className={cx(
+              "rounded-2xl border p-5",
+              activeWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-[12px] text-white/70">
+                {activeWindow
+                  ? `Answer window (2 min) • ${activeInterval} min`
+                  : `Next word in • ${nextDrop.interval} min`}
+              </div>
+              <div className="text-[12px] text-white/70">{headerRight}</div>
+            </div>
+
+            <div className="mt-3">
+              {activeWindow ? (
+                <div className="text-4xl font-extrabold tracking-tight">{scrambled}</div>
+              ) : (
+                <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
+              )}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-[12px] text-white/70">
+              <div>{activeWindow ? "Time left to answer:" : "Time to next word:"}</div>
+              <div className="font-semibold text-white/85">{timeLabel}</div>
+            </div>
+          </div>
+
+          {/* Answer */}
+          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <label className="text-[12px] text-white/70">Type the correct word</label>
+            <input
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder={activeWindow ? "Type here..." : "Wait for the word..."}
+              disabled={!activeWindow || submitting}
+              className={cx(
+                "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
+                activeWindow
+                  ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
+                  : "border-white/8 bg-slate-950/20 text-white/40 placeholder:text-white/25"
+              )}
+            />
+
+            <button
+              onClick={onSend}
+              disabled={!activeWindow || submitting}
+              className={cx(
+                "mt-3 w-full rounded-2xl border px-5 py-4 text-left transition active:scale-[0.98] touch-manipulation",
+                activeWindow && !submitting
+                  ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
+                  : "border-white/10 bg-white/5 opacity-50"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[16px] font-semibold">{submitting ? "Sending..." : "Send"}</div>
+                  <div className="mt-1 text-[12px] text-white/65">Server validates time + points</div>
+                </div>
+                <div className="text-white/55">→</div>
+              </div>
+            </button>
+          </div>
+
+          {result ? (
+            <div
+              className={cx(
+                "rounded-2xl border p-4",
+                result.ok && result.correct
+                  ? "border-emerald-400/25 bg-emerald-500/10"
+                  : "border-rose-400/25 bg-rose-500/10"
+              )}
+            >
+              <div className="text-[12px] text-white/70">Result</div>
+
+              {result.serverError ? (
+                <div className="mt-1 text-[14px] font-semibold">Error ❌ — {result.serverError}</div>
+              ) : (
+                <>
+                  <div className="mt-1 text-[15px] font-semibold">
+                    {result.correct
+                      ? `Correct ✅ (${result.interval} min)`
+                      : `Wrong ❌ (${result.interval} min) — answer: ${word}`}
+                  </div>
+                  <div className="mt-1 text-[12px] text-white/65">
+                    Time: {result.ms} ms • Points: {result.points}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+        </section>
+
+        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
+          Quick • Word Quick
+        </footer>
+      </div>
+    </main>
+  );
+}
