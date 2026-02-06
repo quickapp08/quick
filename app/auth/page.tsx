@@ -1,209 +1,313 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-type Mode = "login" | "register";
-type Msg = { type: "success" | "error" | "info"; text: string } | null;
-
+/**
+ * ✅ Next.js zahtijeva da useSearchParams() bude unutar Suspense boundary.
+ * Zato Page samo wrapa AuthInner u <Suspense>.
+ */
 export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-[100svh] bg-slate-950 px-4 pb-10 pt-6 text-white">
+          <div className="mx-auto w-full max-w-md">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+              <div className="text-[14px] font-semibold">Loading…</div>
+              <div className="mt-2 text-[12px] text-white/60">
+                Preparing account screen
+              </div>
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <AuthInner />
+    </Suspense>
+  );
+}
+
+function msgBox(msg: string | null) {
+  if (!msg) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+      {msg}
+    </div>
+  );
+}
+
+function AuthInner() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
 
-  const initialMode = useMemo<Mode>(() => {
-    const m = sp.get("mode");
+  const mode = useMemo(() => {
+    const m = (searchParams.get("mode") || "login").toLowerCase();
     return m === "register" ? "register" : "login";
-  }, [sp]);
+  }, [searchParams]);
 
-  const [mode, setMode] = useState<Mode>(initialMode);
-
-  useEffect(() => {
-    setMode(initialMode);
-  }, [initialMode]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<Msg>(null);
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  const submit = async () => {
+  // session state
+  useEffect(() => {
+    let mounted = true;
+
+    async function init() {
+      const { data } = await supabase.auth.getSession();
+      const s = data.session;
+      if (!mounted) return;
+      setIsAuthed(!!s);
+      setUserEmail(s?.user?.email ?? null);
+    }
+
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthed(!!session);
+      setUserEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function signIn() {
     setLoading(true);
     setMsg(null);
 
-    if (!email.trim() || !password.trim()) {
-      setMsg({ type: "error", text: "Enter email and password." });
-      setLoading(false);
-      return;
-    }
-
-    if (mode === "register") {
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-
-      if (error) {
-        setMsg({ type: "error", text: error.message });
-        setLoading(false);
-        return;
-      }
-
-      // Ako email confirm nije uključen, user će biti odmah logiran.
-      // Ako jest, i dalje je ok — user se može logirati nakon potvrde.
-      setMsg({ type: "success", text: "Account created. You can now login." });
-      setLoading(false);
-      return;
-    }
-
-    // login
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
+    setLoading(false);
+
     if (error) {
-      setMsg({ type: "error", text: error.message });
-      setLoading(false);
+      setMsg(error.message);
       return;
     }
 
-    setMsg({ type: "success", text: "Signed in." });
-    setLoading(false);
-
-    // Vraćamo na home — home će vidjeti session i prebaciti na MENU
+    // ✅ nakon login-a: nazad na home + refresh
     router.push("/");
     router.refresh();
-  };
+  }
 
-  const msgBox = (m: Msg) => {
-    if (!m) return null;
+  async function signUp() {
+    setLoading(true);
+    setMsg(null);
 
-    const base = "mt-4 rounded-xl border px-3 py-2 text-[13px] leading-snug";
-    const cls =
-      m.type === "success"
-        ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-        : m.type === "error"
-        ? "border-rose-400/20 bg-rose-500/10 text-rose-100"
-        : "border-white/12 bg-white/6 text-white/80";
+    // Najsigurnije: bez email confirm komplikacija sad (kasnije ćemo)
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
 
-    return <div className={cx(base, cls)}>{m.text}</div>;
-  };
+    setLoading(false);
+
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    // ✅ nakon register-a: nazad na home + refresh
+    router.push("/");
+    router.refresh();
+  }
+
+  async function signOut() {
+    setLoading(true);
+    setMsg(null);
+
+    const { error } = await supabase.auth.signOut();
+
+    setLoading(false);
+
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    router.push("/");
+    router.refresh();
+  }
 
   return (
-    <main
-      className="min-h-[100svh] w-full bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
-      style={{
-        paddingTop: "max(env(safe-area-inset-top), 18px)",
-        paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
-      }}
-    >
-      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        <header className="pt-2">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/"
-              className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
-            >
-              ← Back
-            </Link>
+    <main className="min-h-[100svh] bg-slate-950 px-4 pb-10 pt-6 text-white">
+      <div className="mx-auto w-full max-w-md">
+        {/* Header */}
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              {/* Back */}
+              <button
+                onClick={() => router.push("/")}
+                className="mt-1 rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+              >
+                ← Back
+              </button>
 
-            <div className="text-[13px] font-semibold text-white/85">Auth</div>
-            <div className="w-[64px]" />
-          </div>
-
-          <h1 className="mt-5 text-2xl font-bold tracking-tight">
-            {mode === "login" ? "Login" : "Register"}
-          </h1>
-          <p className="mt-2 text-[13px] text-white/70">
-            Ranked access + tournaments.
-          </p>
-        </header>
-
-        <section className="mt-6 rounded-3xl border border-white/12 bg-white/6 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setMode("login")}
-              className={cx(
-                "rounded-xl px-3 py-2 text-[13px] font-semibold transition active:scale-[0.98] touch-manipulation",
-                mode === "login"
-                  ? "border border-blue-300/25 bg-blue-500/15 text-white"
-                  : "border border-white/12 bg-white/6 text-white/70 hover:bg-white/10"
-              )}
-            >
-              Login
-            </button>
-
-            <button
-              onClick={() => setMode("register")}
-              className={cx(
-                "rounded-xl px-3 py-2 text-[13px] font-semibold transition active:scale-[0.98] touch-manipulation",
-                mode === "register"
-                  ? "border border-blue-300/25 bg-blue-500/15 text-white"
-                  : "border border-white/12 bg-white/6 text-white/70 hover:bg-white/10"
-              )}
-            >
-              Register
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <input
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              inputMode="email"
-              className="w-full rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-blue-400/60"
-            />
-
-            <input
-              placeholder="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              className="w-full rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-blue-400/60"
-            />
-
-            <button
-              onClick={submit}
-              disabled={loading}
-              className="w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation disabled:opacity-60"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[16px] font-semibold">
-                    {loading
-                      ? "Please wait…"
-                      : mode === "login"
-                      ? "Login"
-                      : "Create account"}
-                  </div>
-                  <div className="mt-1 text-[12px] text-white/65">
-                    {mode === "login" ? "Continue your progress" : "Ranked access + tournaments"}
-                  </div>
-                </div>
-                <div className="text-white/55">→</div>
+              <div>
+                <h1 className="text-[18px] font-semibold tracking-tight text-white">
+                  Account
+                </h1>
+                <p className="mt-1 text-[12px] text-white/65">
+                  {isAuthed
+                    ? `Signed in as ${userEmail ?? "user"}`
+                    : "Sign in to sync scores and appear on the leaderboard."}
+                </p>
               </div>
-            </button>
-
-            <div className="pt-2 text-center text-[11px] text-white/45">
-              (MVP) Email confirmation can be added later.
             </div>
 
-            {msgBox(msg)}
+            <div
+              className={cx(
+                "rounded-full border px-3 py-1 text-[12px]",
+                isAuthed
+                  ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                  : "border-white/12 bg-white/6 text-white/70"
+              )}
+            >
+              {isAuthed ? "Online" : "Guest"}
+            </div>
           </div>
-        </section>
 
-        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
-          Quick • Auth
+          {/* Body */}
+          {!isAuthed && (
+            <div className="mt-5">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => router.push("/auth?mode=login")}
+                  className={cx(
+                    "flex-1 rounded-2xl border px-4 py-2 text-[12px] font-semibold transition active:scale-[0.98] touch-manipulation",
+                    mode === "login"
+                      ? "border-blue-300/30 bg-blue-500/15 text-white"
+                      : "border-white/12 bg-white/6 text-white/70 hover:bg-white/10"
+                  )}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => router.push("/auth?mode=register")}
+                  className={cx(
+                    "flex-1 rounded-2xl border px-4 py-2 text-[12px] font-semibold transition active:scale-[0.98] touch-manipulation",
+                    mode === "register"
+                      ? "border-blue-300/30 bg-blue-500/15 text-white"
+                      : "border-white/12 bg-white/6 text-white/70 hover:bg-white/10"
+                  )}
+                >
+                  Register
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <div>
+                  <div className="mb-1 text-[12px] text-white/60">Email</div>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    type="email"
+                    autoComplete="email"
+                    className="w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-blue-300/35 focus:ring-2 focus:ring-blue-400/20"
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[12px] text-white/60">Password</div>
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    autoComplete={
+                      mode === "register" ? "new-password" : "current-password"
+                    }
+                    className="w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-blue-300/35 focus:ring-2 focus:ring-blue-400/20"
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {mode === "register" ? (
+                    <button
+                      onClick={signUp}
+                      disabled={loading}
+                      className={cx(
+                        "rounded-2xl px-4 py-3 text-sm font-semibold text-white transition",
+                        "bg-blue-600 hover:bg-blue-700 border border-blue-500/30",
+                        "disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] touch-manipulation"
+                      )}
+                    >
+                      {loading ? "Please wait…" : "Create account"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={signIn}
+                      disabled={loading}
+                      className={cx(
+                        "rounded-2xl px-4 py-3 text-sm font-semibold text-white transition",
+                        "bg-blue-600 hover:bg-blue-700 border border-blue-500/30",
+                        "disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] touch-manipulation"
+                      )}
+                    >
+                      {loading ? "Please wait…" : "Sign in"}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => router.push("/")}
+                    disabled={loading}
+                    className={cx(
+                      "rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm font-semibold text-white/85 transition hover:bg-white/10",
+                      "disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] touch-manipulation"
+                    )}
+                  >
+                    Home
+                  </button>
+                </div>
+
+                <div className="mt-4 text-[12px] text-white/55">
+                  When signed in, your results can be saved and ranked.
+                </div>
+              </div>
+
+              {msgBox(msg)}
+            </div>
+          )}
+
+          {isAuthed && (
+            <div className="mt-5">
+              <button
+                onClick={signOut}
+                disabled={loading}
+                className={cx(
+                  "w-full rounded-2xl border border-white/12 px-4 py-3 text-sm font-semibold transition",
+                  "bg-white/6 hover:bg-white/10 text-white/85",
+                  "disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] touch-manipulation"
+                )}
+              >
+                {loading ? "Please wait…" : "Logout"}
+              </button>
+
+              {msgBox(msg)}
+            </div>
+          )}
+        </div>
+
+        <footer className="mt-8 text-center text-[11px] text-white/40">
+          Quick © {new Date().getFullYear()}
         </footer>
       </div>
     </main>
