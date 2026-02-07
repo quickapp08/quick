@@ -195,7 +195,7 @@ export default function QuickWordPage() {
   const [result, setResult] = useState<ResultState | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [serverWord, setServerWord] = useState<string>("");
+  const [serverWord, setServerWord] = useState<string>(""); // keep (even if not shown)
   const [scrambled, setScrambled] = useState<string>("");
 
   const notifiedKeySetRef = useRef<Set<string>>(new Set());
@@ -488,173 +488,205 @@ export default function QuickWordPage() {
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
+      {/* Mobile-first: keep content within viewport, avoid scroll.
+         We use a compact header + main "game card", settings collapsed. */}
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+        {/* Compact header */}
         <header className="pt-2">
           <TopBar title="Word Quick" />
-          <h1 className="mt-5 text-2xl font-bold tracking-tight">Word Quick</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
-            Intervals: 30 min (offset +5) and 60 min (on the hour). Word is hidden until the round starts. You have{" "}
-            <b>2 minutes</b> to answer.
-          </p>
-        </header>
-
-        <section className="mt-5 space-y-3">
-          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-            <div className="text-[12px] font-semibold text-white/85">Participation</div>
-
-            <label className="mt-3 flex items-center gap-3 text-[13px] text-white/80">
-              <input
-                type="checkbox"
-                className="h-5 w-5 accent-blue-400"
-                checked={participate}
-                onChange={(e) => setParticipate(e.target.checked)}
-              />
-              Participate in timed words
-            </label>
-
-            <div className="mt-4 text-[12px] font-semibold text-white/85">Intervals (choose any)</div>
-            <div className="mt-2 space-y-2">
-              {ALL_INTERVALS.map((i) => (
-                <label
-                  key={i}
-                  className="flex items-center justify-between rounded-xl border border-white/12 bg-white/5 px-3 py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 accent-blue-400"
-                      checked={!!enabledIntervals[i]}
-                      onChange={() => toggleInterval(i)}
-                    />
-                    <div className="text-[13px] text-white/80">
-                      {i} min {i === 30 ? "(+5 min offset)" : "(on the hour)"}
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-white/50">
-                    next:{" "}
-                    {new Date(nextDropMs(now, i, OFFSETS_MS[i])).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                </label>
-              ))}
+          <div className="mt-4 flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-[22px] font-bold tracking-tight">Word Quick</h1>
+              <div className="mt-1 text-[12px] text-white/60">
+                {activeWindow ? "Answer window is live" : "Waiting for next drop"} •{" "}
+                <span className="text-white/75">{headerRight}</span>
+              </div>
             </div>
 
-            <button
-              onClick={requestNotifications}
-              className="mt-3 w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+            {/* tiny status pill */}
+            <div
+              className={cx(
+                "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
+                activeWindow ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100" : "border-blue-300/25 bg-blue-500/10 text-blue-100"
+              )}
+              title={activeWindow ? "You can answer now" : "Word is hidden until start"}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[15px] font-semibold">Enable notifications</div>
-                  <div className="mt-1 text-[12px] text-white/65">Get “Word incoming in 1 minute”</div>
-                </div>
-                <div className="text-white/55">→</div>
-              </div>
-            </button>
-
-            <div className="mt-3 text-[11px] text-white/45">
-              Browser fully closed = not reliable until PWA + Service Worker.
+              {activeWindow ? "LIVE" : "SOON"}
             </div>
           </div>
-        </section>
+        </header>
 
+        {/* Main gameplay area (fits in one screen) */}
         <section className="mt-4 space-y-3">
+          {/* Game card */}
           <div
             className={cx(
-              "rounded-2xl border p-5",
+              "rounded-2xl border p-4",
               activeWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
             )}
           >
             <div className="flex items-center justify-between">
               <div className="text-[12px] text-white/70">
-                {activeWindow
-                  ? `Answer window (2 min) • ${activeInterval} min`
-                  : `Next word in • ${nextDrop.interval} min`}
+                {activeWindow ? `2 min window • ${activeInterval} min` : `Next word • ${nextDrop.interval} min`}
               </div>
-              <div className="text-[12px] text-white/70">{headerRight}</div>
+              <div className="text-[12px] font-semibold text-white/85">{timeLabel}</div>
             </div>
 
             <div className="mt-3">
               {activeWindow ? (
-                <div className="text-4xl font-extrabold tracking-tight">{scrambled || "…"}</div>
+                <div className="select-none text-[42px] font-extrabold leading-none tracking-tight">
+                  {scrambled || "…"}
+                </div>
               ) : (
                 <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
               )}
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-[12px] text-white/70">
-              <div>{activeWindow ? "Time left to answer:" : "Time to next word:"}</div>
-              <div className="font-semibold text-white/85">{timeLabel}</div>
+            {/* small hint line */}
+            <div className="mt-3 text-[11px] text-white/55">
+              Case doesn’t matter. You have <b>2 minutes</b> to submit.
             </div>
           </div>
 
+          {/* Input + Send (compact) */}
           <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-            <label className="text-[12px] text-white/70">Type the correct word</label>
-            <input
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder={activeWindow ? "Type here..." : "Wait for the word..."}
-              disabled={!activeWindow || submitting}
-              className={cx(
-                "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
-                activeWindow
-                  ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
-                  : "border-white/8 bg-slate-950/20 text-white/40 placeholder:text-white/25"
-              )}
-            />
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <label className="block text-[12px] text-white/70">Type the correct word</label>
+                <input
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  placeholder={activeWindow ? "Type here..." : "Wait for the word..."}
+                  disabled={!activeWindow || submitting}
+                  className={cx(
+                    "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
+                    activeWindow
+                      ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
+                      : "border-white/8 bg-slate-950/20 text-white/40 placeholder:text-white/25"
+                  )}
+                />
+              </div>
 
-            <button
-              onClick={onSend}
-              disabled={!activeWindow || submitting}
-              className={cx(
-                "mt-3 w-full rounded-2xl border px-5 py-4 text-left transition active:scale-[0.98] touch-manipulation",
-                activeWindow && !submitting
-                  ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
-                  : "border-white/10 bg-white/5 opacity-50"
-              )}
-            >
+              <button
+                onClick={onSend}
+                disabled={!activeWindow || submitting}
+                className={cx(
+                  "shrink-0 rounded-2xl border px-4 py-3 text-[13px] font-semibold transition active:scale-[0.98] touch-manipulation",
+                  activeWindow && !submitting
+                    ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
+                    : "border-white/10 bg-white/5 opacity-50"
+                )}
+                style={{ minWidth: 96 }}
+              >
+                {submitting ? "Sending…" : "Send"}
+              </button>
+            </div>
+
+            {/* Result (compact, doesn’t push layout too much) */}
+            {result ? (
+              <div
+                className={cx(
+                  "mt-3 rounded-xl border px-3 py-2",
+                  result.ok && result.correct
+                    ? "border-emerald-400/25 bg-emerald-500/10"
+                    : "border-rose-400/25 bg-rose-500/10"
+                )}
+              >
+                {result.serverError ? (
+                  <div className="text-[12px] font-semibold">Error ❌ — {result.serverError}</div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 text-[12px] font-semibold">
+                      {result.correct ? "Correct ✅" : `Wrong ❌ — ${result.serverAnswer ?? "?"}`}
+                      <div className="mt-0.5 text-[11px] font-normal text-white/65">
+                        {result.interval} min • {result.ms} ms
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
+                      +{result.points}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Settings collapsed (no scroll) */}
+          <details className="rounded-2xl border border-white/12 bg-white/6">
+            <summary className="cursor-pointer list-none px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[16px] font-semibold">{submitting ? "Sending..." : "Send"}</div>
-                  <div className="mt-1 text-[12px] text-white/65">Server validates time + points</div>
+                  <div className="text-[13px] font-semibold text-white/85">Game settings</div>
+                  <div className="mt-0.5 text-[11px] text-white/55">
+                    Participation • Intervals • Notifications
+                  </div>
                 </div>
-                <div className="text-white/55">→</div>
+                <div className="text-white/55">▾</div>
               </div>
-            </button>
-          </div>
+            </summary>
 
-          {result ? (
-            <div
-              className={cx(
-                "rounded-2xl border p-4",
-                result.ok && result.correct
-                  ? "border-emerald-400/25 bg-emerald-500/10"
-                  : "border-rose-400/25 bg-rose-500/10"
-              )}
-            >
-              <div className="text-[12px] text-white/70">Result</div>
+            <div className="px-4 pb-4 pt-1">
+              <div className="text-[12px] font-semibold text-white/85">Participation</div>
+              <label className="mt-2 flex items-center gap-3 text-[13px] text-white/80">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-blue-400"
+                  checked={participate}
+                  onChange={(e) => setParticipate(e.target.checked)}
+                />
+                Participate in timed words
+              </label>
 
-              {result.serverError ? (
-                <div className="mt-1 text-[14px] font-semibold">Error ❌ — {result.serverError}</div>
-              ) : (
-                <>
-                  <div className="mt-1 text-[15px] font-semibold">
-                    {result.correct
-                      ? `Correct ✅ (${result.interval} min)`
-                      : `Wrong ❌ (${result.interval} min) — answer: ${result.serverAnswer ?? "?"}`}
+              <div className="mt-4 text-[12px] font-semibold text-white/85">Intervals</div>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                {ALL_INTERVALS.map((i) => (
+                  <label
+                    key={i}
+                    className="flex items-center justify-between rounded-xl border border-white/12 bg-white/5 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 accent-blue-400"
+                        checked={!!enabledIntervals[i]}
+                        onChange={() => toggleInterval(i)}
+                      />
+                      <div className="text-[13px] text-white/80">
+                        {i} min {i === 30 ? "(+5)" : "(00)"}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-white/50">
+                      next:{" "}
+                      {new Date(nextDropMs(now, i, OFFSETS_MS[i])).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <button
+                onClick={requestNotifications}
+                className="mt-3 w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[13px] font-semibold">Enable notifications</div>
+                    <div className="mt-0.5 text-[11px] text-white/65">“Word incoming in 1 minute”</div>
                   </div>
-                  <div className="mt-1 text-[12px] text-white/65">
-                    Time: {result.ms} ms • Points: {result.points}
-                  </div>
-                </>
-              )}
+                  <div className="text-white/55">→</div>
+                </div>
+              </button>
+
+              <div className="mt-2 text-[11px] text-white/45">
+                Browser fully closed = not reliable until PWA + Service Worker.
+              </div>
             </div>
-          ) : null}
+          </details>
         </section>
 
-        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
           Quick • Word Quick
         </footer>
       </div>
