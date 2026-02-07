@@ -34,13 +34,178 @@ function HeaderPill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function clamp2Style(): React.CSSProperties {
-  return {
-    display: "-webkit-box",
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: "vertical",
-    overflow: "hidden",
-  };
+function IconSquare({ icon }: { icon: string }) {
+  return (
+    <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
+      <span className="leading-none">{icon}</span>
+    </div>
+  );
+}
+
+function NotifButton({ count = 0 }: { count?: number }) {
+  return (
+    <button
+      type="button"
+      className={cx(
+        "relative grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/6",
+        "shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition",
+        "active:scale-[0.98] hover:bg-white/10"
+      )}
+      aria-label="Notifications"
+      title="Notifications (coming soon)"
+    >
+      <span className="text-[16px] leading-none">🔔</span>
+      {count > 0 ? (
+        <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full border border-blue-300/25 bg-blue-500/20 px-1 text-[11px] font-extrabold text-blue-100">
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : (
+        // subtle dot to show "place for notifications"
+        <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border border-white/20 bg-white/10" />
+      )}
+    </button>
+  );
+}
+
+function BigTile({
+  titleTop,
+  titleBottom,
+  icon,
+  href,
+  onClick,
+  locked,
+  primary,
+}: {
+  titleTop: string;
+  titleBottom: string;
+  icon: string;
+  href?: string;
+  onClick?: () => void;
+  locked?: boolean;
+  primary?: boolean;
+}) {
+  const base =
+    "group relative w-full overflow-hidden rounded-3xl border px-4 py-4 text-left transition touch-manipulation " +
+    "active:scale-[0.98] active:opacity-95";
+
+  const surface = primary
+    ? "border-blue-300/20 bg-gradient-to-b from-blue-500/18 to-white/5 hover:shadow-[0_0_55px_rgba(59,130,246,0.26)]"
+    : "border-white/10 bg-white/6 hover:bg-white/10 hover:border-white/15";
+
+  const inner = (
+    <>
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/7" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/9 blur-2xl" aria-hidden="true" />
+      <div
+        className={cx(
+          "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[18deg]",
+          "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
+          "transition-transform duration-700 ease-out",
+          "group-hover:translate-x-[520px]"
+        )}
+        aria-hidden="true"
+      />
+      {locked ? (
+        <div
+          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-rose-300/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-100"
+          aria-hidden="true"
+        >
+          🔒
+        </div>
+      ) : null}
+
+      <div className="relative z-[2] flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconSquare icon={icon} />
+          <div className="min-w-0">
+            {/* NO truncate, NO clamp, must show full words */}
+            <div className="text-[16px] font-extrabold leading-tight tracking-tight text-white/95">
+              {titleTop}
+            </div>
+            <div className="text-[16px] font-extrabold leading-tight tracking-tight text-white/95">
+              {titleBottom}
+            </div>
+          </div>
+        </div>
+        <div className="shrink-0 text-white/35 transition group-hover:text-white/60">›</div>
+      </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className={cx(base, surface)}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <button onClick={onClick} className={cx(base, surface)} type="button">
+      {inner}
+    </button>
+  );
+}
+
+function SmallTile({
+  title,
+  icon,
+  href,
+  onClick,
+  locked,
+}: {
+  title: string;
+  icon: string;
+  href?: string;
+  onClick?: () => void;
+  locked?: boolean;
+}) {
+  const base =
+    "group relative w-full overflow-hidden rounded-3xl border px-4 py-4 text-left transition touch-manipulation " +
+    "active:scale-[0.98] active:opacity-95";
+
+  const surface = "border-white/10 bg-white/6 hover:bg-white/10 hover:border-white/15";
+
+  const inner = (
+    <>
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/7" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/8 blur-2xl" aria-hidden="true" />
+
+      {locked ? (
+        <div
+          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-rose-300/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-100"
+          aria-hidden="true"
+        >
+          🔒
+        </div>
+      ) : null}
+
+      <div className="relative z-[2] flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconSquare icon={icon} />
+          {/* one line, but NO cutting: allow wrap if needed */}
+          <div className="min-w-0 text-[14px] font-extrabold leading-tight tracking-tight text-white/95">
+            {title}
+          </div>
+        </div>
+        <div className="shrink-0 text-white/35 transition group-hover:text-white/60">›</div>
+      </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className={cx(base, surface)}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <button onClick={onClick} className={cx(base, surface)} type="button">
+      {inner}
+    </button>
+  );
 }
 
 function ActionLink({
@@ -89,89 +254,6 @@ function ActionLink({
   );
 }
 
-function Tile({
-  title,
-  icon,
-  href,
-  onClick,
-  locked,
-  primary,
-}: {
-  title: string;
-  icon: string;
-  href?: string;
-  onClick?: () => void;
-  locked?: boolean;
-  primary?: boolean;
-}) {
-  const base =
-    "group relative w-full overflow-hidden rounded-3xl border px-4 py-4 text-left transition touch-manipulation " +
-    "active:scale-[0.98] active:opacity-95";
-
-  const surface = primary
-    ? "border-blue-300/20 bg-gradient-to-b from-blue-500/18 to-white/5 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]"
-    : "border-white/10 bg-white/6 hover:bg-white/10 hover:border-white/15";
-
-  const inner = (
-    <>
-      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/8 blur-2xl" aria-hidden="true" />
-      <div
-        className={cx(
-          "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[18deg]",
-          "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
-          "transition-transform duration-700 ease-out",
-          "group-hover:translate-x-[520px]"
-        )}
-        aria-hidden="true"
-      />
-
-      {locked ? (
-        <div
-          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-rose-300/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-100"
-          aria-hidden="true"
-        >
-          🔒
-        </div>
-      ) : null}
-
-      <div className="relative z-[2] flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
-            {icon}
-          </div>
-
-          {/* NO TRUNCATE: show up to 2 lines cleanly */}
-          <div className="min-w-0">
-            <div
-              className="text-[14px] font-extrabold leading-tight tracking-tight text-white/95"
-              style={clamp2Style()}
-            >
-              {title}
-            </div>
-          </div>
-        </div>
-
-        <div className="shrink-0 text-white/35 transition group-hover:text-white/60">›</div>
-      </div>
-    </>
-  );
-
-  if (href) {
-    return (
-      <Link href={href} className={cx(base, surface)}>
-        {inner}
-      </Link>
-    );
-  }
-
-  return (
-    <button onClick={onClick} className={cx(base, surface)} type="button">
-      {inner}
-    </button>
-  );
-}
-
 /* ---------------- PAGE (LOGIC UNCHANGED) ---------------- */
 
 export default function HomePage() {
@@ -193,9 +275,7 @@ export default function HomePage() {
       setUser(u ? { id: u.id, email: u.email } : null);
     });
 
-    return () => {
-      sub.subscription.unsubscribe();
-    };
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -269,13 +349,17 @@ export default function HomePage() {
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_600px_at_0%_30%,rgba(255,255,255,0.06),transparent_60%)]" />
 
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* top pills */}
+        {/* top row */}
         <div className="pt-1 flex items-center justify-between">
           <HeaderPill>
             <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
             Global
           </HeaderPill>
-          <HeaderPill>{modeLabel}</HeaderPill>
+
+          <div className="flex items-center gap-2">
+            <NotifButton count={0} />
+            <HeaderPill>{modeLabel}</HeaderPill>
+          </div>
         </div>
 
         {/* header card */}
@@ -312,32 +396,27 @@ export default function HomePage() {
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
-              {/* FIXED: clean big buttons */}
               <ActionLink href="/auth?mode=login" title="Login" icon="🔐" primary />
               <ActionLink href="/auth?mode=register" title="Register" icon="✨" />
             </>
           ) : (
             <>
-              {/* modes */}
+              {/* Big row: Word + Photo (same row as you asked) */}
               <div className="grid grid-cols-2 gap-3">
-                <Tile title="Word Quick" icon="⌨️" href="/quick-word" primary />
+                <BigTile titleTop="Word" titleBottom="Quick" icon="⌨️" href="/quick-word" primary />
                 {user ? (
-                  <Tile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
+                  <BigTile titleTop="Photo" titleBottom="Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
                 ) : (
-                  <Tile title="Photo Quick" icon="📸" onClick={openPhoto} locked />
+                  <BigTile titleTop="Photo" titleBottom="Quick" icon="📸" onClick={openPhoto} locked />
                 )}
               </div>
 
-              {/* social */}
+              {/* Actions below */}
               <div className="grid grid-cols-2 gap-3">
-                <Tile title="Create Own" icon="👥" onClick={() => {}} locked />
-                <Tile title="Tournaments" icon="🏟️" onClick={() => {}} locked />
-              </div>
-
-              {/* meta */}
-              <div className="grid grid-cols-2 gap-3">
-                <Tile title="Leaderboard" icon="🏆" href="/leaderboard" />
-                <Tile title="Settings" icon="⚙️" href="/settings" />
+                <SmallTile title="Create Own" icon="👥" onClick={() => {}} locked />
+                <SmallTile title="Tournaments" icon="🏟️" onClick={() => {}} locked />
+                <SmallTile title="Leaderboard" icon="🏆" href="/leaderboard" />
+                <SmallTile title="Settings" icon="⚙️" href="/settings" />
               </div>
 
               <button
