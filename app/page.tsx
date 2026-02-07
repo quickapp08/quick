@@ -24,17 +24,25 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/* ---------- UI atoms ---------- */
+/* ---------------- UI (NO deps) ---------------- */
 
-function IconBox({ icon }: { icon: string }) {
+function Pill({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/12 bg-white/6 text-[18px]">
-      {icon}
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75">
+      {children}
+    </span>
+  );
+}
+
+function IconBadge({ icon }: { icon: string }) {
+  return (
+    <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
+      <span className="leading-none">{icon}</span>
     </div>
   );
 }
 
-function MenuCard({
+function Tile({
   title,
   icon,
   href,
@@ -50,56 +58,75 @@ function MenuCard({
   primary?: boolean;
 }) {
   const base =
-    "relative w-full rounded-3xl border px-4 py-4 transition active:scale-[0.98]";
+    "group relative w-full overflow-hidden rounded-3xl border p-4 text-left transition touch-manipulation " +
+    "active:scale-[0.98] active:opacity-95";
 
-  const style = primary
-    ? "border-blue-300/25 bg-blue-500/15 hover:shadow-[0_0_40px_rgba(59,130,246,0.25)]"
-    : "border-white/12 bg-white/6 hover:bg-white/10";
+  const surface = primary
+    ? "border-blue-300/20 bg-gradient-to-b from-blue-500/18 to-white/5 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]"
+    : "border-white/10 bg-white/6 hover:bg-white/9 hover:border-white/16";
 
-  const content = (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <IconBox icon={icon} />
-        <div className="text-[15px] font-semibold text-white">{title}</div>
-      </div>
-      <div className="text-white/40">→</div>
-
-      {locked && (
-        <div className="absolute right-3 top-3 rounded-full border border-rose-300/20 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-100">
-          🔒
-        </div>
-      )}
-    </div>
-  );
-
-  if (href) {
-    return (
-      <Link href={href} className={cx(base, style)}>
-        {content}
-      </Link>
-    );
-  }
-
-  return (
-    <button onClick={onClick} className={cx(base, style)}>
-      {content}
+  return href ? (
+    <Link href={href} className={cx(base, surface)}>
+      <TileInner title={title} icon={icon} locked={locked} />
+    </Link>
+  ) : (
+    <button onClick={onClick} className={cx(base, surface)} type="button">
+      <TileInner title={title} icon={icon} locked={locked} />
     </button>
   );
 }
 
-/* ---------- PAGE ---------- */
+function TileInner({ title, icon, locked }: { title: string; icon: string; locked?: boolean }) {
+  return (
+    <>
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/8 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className={cx(
+          "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[18deg]",
+          "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
+          "transition-transform duration-700 ease-out",
+          "group-hover:translate-x-[520px]"
+        )}
+        aria-hidden="true"
+      />
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+
+      {locked ? (
+        <div
+          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-rose-300/20 bg-rose-500/10 px-2.5 py-1 text-[10px] font-semibold text-rose-100"
+          aria-hidden="true"
+        >
+          🔒
+        </div>
+      ) : null}
+
+      <div className="relative z-[2] flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconBadge icon={icon} />
+          {/* always one line */}
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-extrabold tracking-tight text-white/95">{title}</div>
+          </div>
+        </div>
+        <div className="text-white/35 transition group-hover:text-white/55">›</div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- PAGE (LOGIC SAME) ---------------- */
 
 export default function HomePage() {
   const router = useRouter();
 
   const [screen, setScreen] = useState<Screen>("welcome");
-  const [user, setUser] = useState<null | { id: string; email?: string | null }>(
-    null
-  );
+  const [user, setUser] = useState<null | { id: string; email?: string | null }>(null);
   const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  /* auth */
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user ?? null;
@@ -117,12 +144,17 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (user) setScreen("menu");
+    if (user) {
+      setScreen("menu");
+      setMsg(null);
+    }
   }, [user]);
 
-  /* my status */
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setMyStatus(null);
+      return;
+    }
 
     let alive = true;
 
@@ -142,6 +174,8 @@ export default function HomePage() {
     };
   }, [user]);
 
+  const modeLabel = useMemo(() => (user ? "Ranked" : "Guest"), [user]);
+
   const headerName = useMemo(() => {
     if (!user) return "Guest";
     if (myStatus?.ok && myStatus.nickname) return myStatus.nickname;
@@ -152,6 +186,7 @@ export default function HomePage() {
     await supabase.auth.signOut();
     router.refresh();
     setScreen("welcome");
+    setMsg(null);
     setMyStatus(null);
   };
 
@@ -163,31 +198,61 @@ export default function HomePage() {
     router.push("/quick-photo");
   };
 
+  const myOk = myStatus && myStatus.ok === true ? myStatus : null;
+
   return (
-    <main className="min-h-[100svh] bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white">
-      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4 py-4">
+    <main
+      className="min-h-[100svh] w-full text-white"
+      style={{
+        paddingTop: "max(env(safe-area-inset-top), 14px)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
+      }}
+    >
+      {/* Background */}
+      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(1200px_700px_at_50%_-10%,rgba(59,130,246,0.18),transparent_55%)]" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_600px_at_0%_30%,rgba(255,255,255,0.06),transparent_60%)]" />
+
+      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         {/* HEADER */}
-        <header className="rounded-3xl border border-white/10 bg-white/5 p-4">
+        <header className="pt-1">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[11px] text-white/50">Player</div>
-              <div className="text-[18px] font-extrabold">{headerName}</div>
+            <Pill>
+              <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
+              Global
+            </Pill>
 
-              {myStatus?.ok && (
-                <div className="mt-1 flex gap-2 text-[11px] text-white/70">
-                  <span>🌍 #{myStatus.world_rank ?? "—"}</span>
-                  <span>⚡ {myStatus.total_points} pts</span>
+            <Pill>{modeLabel}</Pill>
+          </div>
+
+          <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.38)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-white/55">Username</div>
+                <div className="mt-0.5 truncate text-[20px] font-extrabold tracking-tight text-white/95">
+                  {headerName}
                 </div>
-              )}
-            </div>
 
-            <Image
-              src="/quick-logo.png"
-              alt="Quick"
-              width={44}
-              height={44}
-              className="opacity-90"
-            />
+                {user ? (
+                  myOk ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Pill>🌍 #{myOk.world_rank ?? "—"}</Pill>
+                      <Pill>⚡ {myOk.total_points} pts</Pill>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-white/45">Loading…</div>
+                  )
+                ) : null}
+              </div>
+
+              {/* Brand logo - NOT avatar looking */}
+              <div className="shrink-0">
+                <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-white/12 bg-white/6">
+                  <div className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-blue-500/18 blur-2xl" />
+                  <Image src="/quick-logo.png" alt="Quick" width={44} height={44} className="opacity-95" />
+                </div>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -195,76 +260,69 @@ export default function HomePage() {
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
-              <MenuCard title="Login" icon="🔐" href="/auth?mode=login" primary />
-              <MenuCard
-                title="Register"
-                icon="✨"
-                href="/auth?mode=register"
-              />
+              <Tile title="Login" icon="🔐" href="/auth?mode=login" primary />
+              <Tile title="Register" icon="✨" href="/auth?mode=register" />
             </>
           ) : (
             <>
-              {/* QUICK MODES */}
+              {/* Modes */}
               <div className="grid grid-cols-2 gap-3">
-                <MenuCard
-                  title="Word Quick"
-                  icon="⌨️"
-                  href="/quick-word"
-                  primary
-                />
-                <MenuCard
-                  title="Photo Quick"
-                  icon="📸"
-                  onClick={openPhoto}
-                  locked={!user}
-                />
+                <Tile title="Word Quick" icon="⌨️" href="/quick-word" primary />
+                {user ? (
+                  <Tile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
+                ) : (
+                  <Tile title="Photo Quick" icon="📸" onClick={openPhoto} locked />
+                )}
               </div>
 
-              {/* SOCIAL / EXTRA */}
+              {/* Social */}
               <div className="grid grid-cols-2 gap-3">
-                <MenuCard
-                  title="Create Own"
-                  icon="👥"
-                  locked
-                />
-                <MenuCard
-                  title="Tournaments"
-                  icon="🏟️"
-                  locked
-                />
+                <Tile title="Create Own" icon="👥" onClick={() => {}} locked />
+                <Tile title="Tournaments" icon="🏟️" onClick={() => {}} locked />
               </div>
 
-              {/* META */}
+              {/* Meta */}
               <div className="grid grid-cols-2 gap-3">
-                <MenuCard
-                  title="Leaderboard"
-                  icon="🏆"
-                  href="/leaderboard"
-                />
-                <MenuCard
-                  title="Settings"
-                  icon="⚙️"
-                  href="/settings"
-                />
+                <Tile title="Leaderboard" icon="🏆" href="/leaderboard" />
+                <Tile title="Settings" icon="⚙️" href="/settings" />
               </div>
 
               <button
                 onClick={logout}
-                className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 py-3 text-[13px] text-white/80 hover:bg-white/10"
+                className={cx(
+                  "mt-3 w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3",
+                  "text-[13px] font-semibold text-white/75 transition",
+                  "hover:bg-white/10 active:scale-[0.98]"
+                )}
+                type="button"
               >
-                Logout
+                ⎋ Logout
               </button>
 
-              {msg && (
-                <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px]">
+              {msg ? (
+                <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px] text-white/90">
                   {msg}
+                  <div className="mt-3 flex gap-2">
+                    <Link
+                      href="/auth?mode=login"
+                      className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/85 transition hover:bg-white/10 active:scale-[0.98]"
+                    >
+                      Login
+                    </Link>
+                    <Link
+                      href="/auth?mode=register"
+                      className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/85 transition hover:bg-white/10 active:scale-[0.98]"
+                    >
+                      Register
+                    </Link>
+                  </div>
                 </div>
-              )}
+              ) : null}
             </>
           )}
         </section>
 
-        <footer className="mt-auto pt-6 text-center text-[11px] text-white/35">
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/30">
           Quick © {new Date().getFullYear()}
         </footer>
       </div>
