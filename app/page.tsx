@@ -315,7 +315,7 @@ export default function HomePage() {
 
   return (
     <main
-      className="relative min-h-[100svh] w-full text-white bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950"
+      className="relative min-h-[100svh] w-full text-white bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 overflow-x-hidden overscroll-x-none touch-pan-y"
       style={{
         paddingTop: "max(env(safe-area-inset-top), 18px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
@@ -328,7 +328,7 @@ export default function HomePage() {
         <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
       </div>
 
-      <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+      <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4 overflow-x-hidden">
         <header className="pt-2">
           <div className="flex items-center justify-between">
             <TopPill>
