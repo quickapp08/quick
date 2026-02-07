@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getGlobalWord } from "../../lib/words";
 import { supabase } from "../../lib/supabase";
 
 type IntervalMin = 60 | 30;
@@ -84,6 +83,7 @@ type ResultState = {
   interval: IntervalMin;
   points: number;
   serverError?: string;
+  serverAnswer?: string; // ✅ server truth for "answer: ..."
 };
 
 type SubmitWordResponse =
@@ -94,12 +94,33 @@ type SubmitWordResponse =
       ms_from_start: number;
       round_start: string;
       server_now: string;
+      answer: string; // ✅ server truth
     }
   | {
       ok: false;
       error: string;
       round_start?: string;
     };
+
+type GetCurrentWordResponse =
+  | {
+      ok: true;
+      interval_min: number;
+      round_start: string;
+      word: string;
+      server_now: string;
+    }
+  | { ok: false; error: string };
+
+function scrambleWord(word: string) {
+  const arr = word.split("");
+  // Fisher-Yates shuffle
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.join("");
+}
 
 export default function QuickWordPage() {
   const [participate, setParticipate] = useState<boolean>(true);
@@ -108,10 +129,18 @@ export default function QuickWordPage() {
     30: true,
   });
 
-  const [now, setNow] = useState<number>(Date.now());
+  // ✅ keep client time ticking, but compute server-like time from last server sync
+  const [nowClient, setNowClient] = useState<number>(Date.now());
+  const [serverNowAtFetch, setServerNowAtFetch] = useState<number>(0);
+  const [clientNowAtFetch, setClientNowAtFetch] = useState<number>(0);
+
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<ResultState | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // ✅ server-truth word for current round (only shown during active window)
+  const [serverWord, setServerWord] = useState<string>("");
+  const [scrambled, setScrambled] = useState<string>("");
 
   // prevent repeat notifications per interval+drop
   const notifiedKeySetRef = useRef<Set<string>>(new Set());
@@ -133,9 +162,15 @@ export default function QuickWordPage() {
 
   // ticker
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 200);
+    const id = window.setInterval(() => setNowClient(Date.now()), 200);
     return () => window.clearInterval(id);
   }, []);
+
+  // ✅ derived "server-ish" now (prevents round_closed while UI shows time left)
+  const now = useMemo(() => {
+    if (!serverNowAtFetch || !clientNowAtFetch) return nowClient;
+    return serverNowAtFetch + (nowClient - clientNowAtFetch);
+  }, [nowClient, serverNowAtFetch, clientNowAtFetch]);
 
   const selectedIntervals = useMemo(() => {
     const picked = ALL_INTERVALS.filter((i) => enabledIntervals[i]);
@@ -181,13 +216,7 @@ export default function QuickWordPage() {
     return nextDrop.dropMs; // start time of next round
   }, [activeWindow, nextDrop.dropMs]);
 
-  // Only for UI display (scrambled). Scoring is server-side via RPC.
-  const { word, scrambled } = useMemo(
-    () => getGlobalWord(activeRoundStartMs, activeInterval),
-    [activeRoundStartMs, activeInterval]
-  );
-
-  // reset input/result when round changes
+  // ✅ when round changes, reset + (if in active window) fetch server word
   const lastKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const key = `${activeInterval}:${activeRoundStartMs}`;
@@ -196,8 +225,41 @@ export default function QuickWordPage() {
       setAnswer("");
       setResult(null);
       setSubmitting(false);
+      setServerWord("");
+      setScrambled("");
     }
-  }, [activeInterval, activeRoundStartMs]);
+
+    // only fetch word when window is active (word should be hidden before start)
+    if (!activeWindow) return;
+
+    const load = async () => {
+      const clientNow = Date.now();
+      const { data, error } = await supabase.rpc("get_current_word", {
+        p_interval_min: activeWindow.interval,
+      });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+      const res = data as GetCurrentWordResponse;
+      if (!res || res.ok !== true) {
+        console.error(res);
+        return;
+      }
+
+      const w = String(res.word || "");
+      const serverNowMs = new Date(String(res.server_now)).getTime();
+
+      setServerNowAtFetch(serverNowMs);
+      setClientNowAtFetch(clientNow);
+
+      setServerWord(w);
+      setScrambled(w ? scrambleWord(w) : "");
+    };
+
+    load();
+  }, [activeInterval, activeRoundStartMs, activeWindow]);
 
   // notifications: 1 minute before drop for EACH selected interval
   useEffect(() => {
@@ -259,7 +321,9 @@ export default function QuickWordPage() {
     setResult(null);
 
     const intervalMin = activeWindow.interval;
-    const userAnswer = answer;
+
+    // ✅ normalize input (fixes Light vs light etc.)
+    const userAnswer = answer.trim().toLowerCase();
 
     const { data, error } = await supabase.rpc("submit_word", {
       p_interval_min: intervalMin,
@@ -292,12 +356,18 @@ export default function QuickWordPage() {
       return;
     }
 
+    // ✅ keep server time synced after submit too
+    const serverNowMs = new Date(String(res.server_now)).getTime();
+    setServerNowAtFetch(serverNowMs);
+    setClientNowAtFetch(Date.now());
+
     setResult({
       ok: true,
       correct: res.correct,
       ms: Number(res.ms_from_start ?? 0),
       interval: intervalMin,
       points: Number(res.points ?? 0),
+      serverAnswer: String(res.answer ?? ""),
     });
 
     setSubmitting(false);
@@ -410,7 +480,7 @@ export default function QuickWordPage() {
 
             <div className="mt-3">
               {activeWindow ? (
-                <div className="text-4xl font-extrabold tracking-tight">{scrambled}</div>
+                <div className="text-4xl font-extrabold tracking-tight">{scrambled || "…"}</div>
               ) : (
                 <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
               )}
@@ -476,7 +546,7 @@ export default function QuickWordPage() {
                   <div className="mt-1 text-[15px] font-semibold">
                     {result.correct
                       ? `Correct ✅ (${result.interval} min)`
-                      : `Wrong ❌ (${result.interval} min) — answer: ${word}`}
+                      : `Wrong ❌ (${result.interval} min) — answer: ${result.serverAnswer ?? "?"}`}
                   </div>
                   <div className="mt-1 text-[12px] text-white/65">
                     Time: {result.ms} ms • Points: {result.points}
