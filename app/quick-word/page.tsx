@@ -122,12 +122,21 @@ function scrambleWord(word: string) {
   return arr.join("");
 }
 
+function fmtHHMM(ms: number) {
+  // NOTE: used only when mounted === true (to avoid hydration mismatch)
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function QuickWordPage() {
   const [participate, setParticipate] = useState<boolean>(true);
   const [enabledIntervals, setEnabledIntervals] = useState<Record<IntervalMin, boolean>>({
     60: true,
     30: true,
   });
+
+  // ✅ prevent hydration mismatch: render time labels only after mount
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // ✅ keep client time ticking, but compute server-like time from last server sync
   const [nowClient, setNowClient] = useState<number>(Date.now());
@@ -195,6 +204,8 @@ export default function QuickWordPage() {
     return best;
   }, [now, selectedIntervals]);
 
+  const isActiveWindow = !!activeWindow;
+
   // next upcoming drop among selected intervals
   const nextDrop = useMemo(() => {
     let best: null | { interval: IntervalMin; dropMs: number } = null;
@@ -218,8 +229,13 @@ export default function QuickWordPage() {
 
   // ✅ when round changes, reset + (if in active window) fetch server word
   const lastKeyRef = useRef<string | null>(null);
+
+  // ✅ IMPORTANT:
+  // Do NOT depend on `activeWindow` object here (it changes every tick).
+  // Depend only on stable primitives: interval + roundStart + isActiveWindow.
   useEffect(() => {
     const key = `${activeInterval}:${activeRoundStartMs}`;
+
     if (lastKeyRef.current !== key) {
       lastKeyRef.current = key;
       setAnswer("");
@@ -230,12 +246,16 @@ export default function QuickWordPage() {
     }
 
     // only fetch word when window is active (word should be hidden before start)
-    if (!activeWindow) return;
+    if (!isActiveWindow) return;
+
+    // If already loaded for this round, don't spam re-fetch / re-scramble
+    if (serverWord && scrambled) return;
 
     const load = async () => {
       const clientNow = Date.now();
+
       const { data, error } = await supabase.rpc("get_current_word", {
-        p_interval_min: activeWindow.interval,
+        p_interval_min: activeInterval,
       });
 
       if (error) {
@@ -255,11 +275,14 @@ export default function QuickWordPage() {
       setClientNowAtFetch(clientNow);
 
       setServerWord(w);
+
+      // scramble ONCE per round (letters must stay fixed during the window)
       setScrambled(w ? scrambleWord(w) : "");
     };
 
     load();
-  }, [activeInterval, activeRoundStartMs, activeWindow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeInterval, activeRoundStartMs, isActiveWindow]);
 
   // notifications: 1 minute before drop for EACH selected interval
   useEffect(() => {
@@ -302,25 +325,25 @@ export default function QuickWordPage() {
   };
 
   const timeLabel = useMemo(() => {
+    if (!mounted) return "—"; // avoid hydration mismatch
     if (activeWindow) return msToClock(activeWindow.endMs - now);
     return msToClock(nextDrop.dropMs - now);
-  }, [activeWindow, nextDrop.dropMs, now]);
+  }, [mounted, activeWindow, nextDrop.dropMs, now]);
 
   const headerRight = useMemo(() => {
-    if (activeWindow) {
-      return `Ends: ${new Date(activeWindow.endMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    }
-    return `Starts: ${new Date(nextDrop.dropMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-  }, [activeWindow, nextDrop.dropMs]);
+    if (!mounted) return "—"; // avoid hydration mismatch
+    if (activeWindow) return `Ends: ${fmtHHMM(activeWindow.endMs)}`;
+    return `Starts: ${fmtHHMM(nextDrop.dropMs)}`;
+  }, [mounted, activeWindow, nextDrop.dropMs]);
 
   const onSend = async () => {
-    if (!activeWindow) return;
+    if (!isActiveWindow) return;
     if (submitting) return;
 
     setSubmitting(true);
     setResult(null);
 
-    const intervalMin = activeWindow.interval;
+    const intervalMin = activeInterval;
 
     // ✅ normalize input (fixes Light vs light etc.)
     const userAnswer = answer.trim().toLowerCase();
@@ -431,12 +454,13 @@ export default function QuickWordPage() {
                       {i} min {i === 30 ? "(+5 min offset)" : "(on the hour)"}
                     </div>
                   </div>
+
+                  {/* avoid hydration mismatch: show next time only after mount */}
                   <div className="text-[11px] text-white/50">
                     next:{" "}
-                    {new Date(nextDropMs(now, i, OFFSETS_MS[i])).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {mounted
+                      ? fmtHHMM(nextDropMs(now, i, OFFSETS_MS[i]))
+                      : "—"}
                   </div>
                 </label>
               ))}
@@ -466,12 +490,12 @@ export default function QuickWordPage() {
           <div
             className={cx(
               "rounded-2xl border p-5",
-              activeWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
+              isActiveWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
             )}
           >
             <div className="flex items-center justify-between">
               <div className="text-[12px] text-white/70">
-                {activeWindow
+                {isActiveWindow
                   ? `Answer window (2 min) • ${activeInterval} min`
                   : `Next word in • ${nextDrop.interval} min`}
               </div>
@@ -479,7 +503,7 @@ export default function QuickWordPage() {
             </div>
 
             <div className="mt-3">
-              {activeWindow ? (
+              {isActiveWindow ? (
                 <div className="text-4xl font-extrabold tracking-tight">{scrambled || "…"}</div>
               ) : (
                 <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
@@ -487,7 +511,7 @@ export default function QuickWordPage() {
             </div>
 
             <div className="mt-3 flex items-center justify-between text-[12px] text-white/70">
-              <div>{activeWindow ? "Time left to answer:" : "Time to next word:"}</div>
+              <div>{isActiveWindow ? "Time left to answer:" : "Time to next word:"}</div>
               <div className="font-semibold text-white/85">{timeLabel}</div>
             </div>
           </div>
@@ -498,11 +522,11 @@ export default function QuickWordPage() {
             <input
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder={activeWindow ? "Type here..." : "Wait for the word..."}
-              disabled={!activeWindow || submitting}
+              placeholder={isActiveWindow ? "Type here..." : "Wait for the word..."}
+              disabled={!isActiveWindow || submitting}
               className={cx(
                 "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
-                activeWindow
+                isActiveWindow
                   ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
                   : "border-white/8 bg-slate-950/20 text-white/40 placeholder:text-white/25"
               )}
@@ -510,10 +534,10 @@ export default function QuickWordPage() {
 
             <button
               onClick={onSend}
-              disabled={!activeWindow || submitting}
+              disabled={!isActiveWindow || submitting}
               className={cx(
                 "mt-3 w-full rounded-2xl border px-5 py-4 text-left transition active:scale-[0.98] touch-manipulation",
-                activeWindow && !submitting
+                isActiveWindow && !submitting
                   ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
                   : "border-white/10 bg-white/5 opacity-50"
               )}
