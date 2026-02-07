@@ -15,17 +15,29 @@ type MyRoom = {
   created_at: string;
 };
 
+type RoomInfo = {
+  room_id: string;
+  code: string;
+  mode: "word" | "photo";
+  target_points: number;
+  current_round: number;
+  is_active: boolean;
+  winner_user_id: string | null;
+  winner_username: string | null;
+  is_owner: boolean;
+};
+
 type RoomRow = {
   place: number;
   user_id: string;
-  username: string; // MVP: "Player"
+  username: string;
   points_total: number;
 };
 
 type MsgRow = {
   id: number;
   user_id: string;
-  username: string; // MVP: "Player"
+  username: string;
   message: string;
   created_at: string;
 };
@@ -172,26 +184,26 @@ export default function CreateOwnPage() {
   const [tab, setTab] = useState<Tab>("rooms");
   const [userId, setUserId] = useState<string | null>(null);
 
-  // My rooms list
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsMsg, setRoomsMsg] = useState<string | null>(null);
   const [myRooms, setMyRooms] = useState<MyRoom[]>([]);
 
-  // Active room detail
   const [activeRoom, setActiveRoom] = useState<MyRoom | null>(null);
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
+
   const [roomBoard, setRoomBoard] = useState<RoomRow[]>([]);
   const [roomMsgs, setRoomMsgs] = useState<MsgRow[]>([]);
   const [roomLoading, setRoomLoading] = useState(false);
   const [roomMsg, setRoomMsg] = useState<string | null>(null);
 
-  // Create flow (KEY only)
+  // Create (key-only)
   const [createMode, setCreateMode] = useState<Mode>("word");
   const [targetPoints, setTargetPoints] = useState<number>(1000);
   const [createLoading, setCreateLoading] = useState(false);
   const [createMsg, setCreateMsg] = useState<string | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
 
-  // Join flow
+  // Join
   const [joinCode, setJoinCode] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinMsg, setJoinMsg] = useState<string | null>(null);
@@ -200,6 +212,10 @@ export default function CreateOwnPage() {
   const [chatText, setChatText] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Room actions
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -229,11 +245,19 @@ export default function CreateOwnPage() {
     setRoomsLoading(false);
   };
 
+  const loadRoomInfo = async (roomId: string) => {
+    const { data, error } = await supabase.rpc("get_room_info", { p_room_id: roomId });
+    if (!error) setRoomInfo(((data ?? [])[0] ?? null) as RoomInfo | null);
+  };
+
   const openRoom = async (room: MyRoom) => {
     setActiveRoom(room);
     setRoomLoading(true);
     setRoomMsg(null);
     setChatError(null);
+    setActionMsg(null);
+
+    await loadRoomInfo(room.room_id);
 
     const [lb, msgs] = await Promise.all([
       supabase.rpc("get_room_leaderboard", { p_room_id: room.room_id, p_limit: 100 }),
@@ -262,6 +286,8 @@ export default function CreateOwnPage() {
   const refreshActiveRoom = async () => {
     if (!activeRoom) return;
 
+    await loadRoomInfo(activeRoom.room_id);
+
     const [lb, msgs] = await Promise.all([
       supabase.rpc("get_room_leaderboard", { p_room_id: activeRoom.room_id, p_limit: 100 }),
       supabase.rpc("get_room_messages", { p_room_id: activeRoom.room_id, p_limit: 50 }),
@@ -279,7 +305,7 @@ export default function CreateOwnPage() {
     const { data, error } = await supabase.rpc("create_room", {
       p_mode: createMode,
       p_target_points: targetPoints,
-      p_invite_emails: [], // signature stays stable
+      p_invite_emails: [],
     });
 
     if (error) {
@@ -359,22 +385,76 @@ export default function CreateOwnPage() {
     }
 
     setChatText("");
-
-    // even if realtime isn't enabled, refresh will show the message
     await refreshActiveRoom();
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-
     setChatSending(false);
   };
 
-  // Init
+  const startAgain = async () => {
+    if (!activeRoom) return;
+    setActionLoading(true);
+    setActionMsg(null);
+
+    const { data, error } = await supabase.rpc("reset_room", { p_room_id: activeRoom.room_id });
+
+    if (error) {
+      setActionMsg(error.message);
+      setActionLoading(false);
+      return;
+    }
+
+    if (!(data as any)?.ok) {
+      setActionMsg((data as any)?.error ?? "Reset failed");
+      setActionLoading(false);
+      return;
+    }
+
+    await refreshActiveRoom();
+    setActionLoading(false);
+  };
+
+  const deleteRoom = async () => {
+    if (!activeRoom) return;
+
+    const really = window.confirm("Delete this room? This cannot be undone.");
+    if (!really) return;
+
+    setActionLoading(true);
+    setActionMsg(null);
+
+    const { data, error } = await supabase.rpc("delete_room", { p_room_id: activeRoom.room_id });
+
+    if (error) {
+      setActionMsg(error.message);
+      setActionLoading(false);
+      return;
+    }
+
+    if (!(data as any)?.ok) {
+      setActionMsg((data as any)?.error ?? "Delete failed");
+      setActionLoading(false);
+      return;
+    }
+
+    // close + refresh list
+    setActiveRoom(null);
+    setRoomInfo(null);
+    setRoomBoard([]);
+    setRoomMsgs([]);
+    setRoomMsg(null);
+    setChatError(null);
+
+    await loadMyRooms();
+    setTab("rooms");
+    setActionLoading(false);
+  };
+
   useEffect(() => {
     loadUser();
     loadMyRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Realtime chat subscription per room (optional; refresh still works)
   useEffect(() => {
     if (!activeRoom) return;
 
@@ -440,10 +520,12 @@ export default function CreateOwnPage() {
                 <button
                   onClick={() => {
                     setActiveRoom(null);
+                    setRoomInfo(null);
                     setRoomBoard([]);
                     setRoomMsgs([]);
                     setRoomMsg(null);
                     setChatError(null);
+                    setActionMsg(null);
                     setTab("rooms");
                   }}
                   className="shrink-0 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75 active:scale-[0.98]"
@@ -494,6 +576,53 @@ export default function CreateOwnPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Winner / Start again */}
+              {roomInfo && !roomInfo.is_active ? (
+                <div className="rounded-3xl border border-blue-300/20 bg-blue-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
+                      🏆
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-white/90">Winner</div>
+                      <div className="mt-1 text-[14px] font-extrabold">
+                        {roomInfo.winner_username || "Player"}
+                      </div>
+                      <div className="mt-1 text-[11px] text-white/60">
+                        Game finished at {roomInfo.target_points} points.
+                      </div>
+
+                      {roomInfo.is_owner ? (
+                        <button
+                          onClick={startAgain}
+                          disabled={actionLoading}
+                          className={cx(
+                            "mt-3 w-full rounded-3xl border border-blue-300/25 bg-blue-500/12 px-5 py-4 text-left transition active:scale-[0.98]",
+                            actionLoading && "opacity-70 pointer-events-none"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-[15px] font-semibold">
+                                {actionLoading ? "Starting…" : "Start again"}
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/65">
+                                New round, room points reset to 0
+                              </div>
+                            </div>
+                            <div className="text-white/55">→</div>
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="mt-3 text-[11px] text-white/60">
+                          Waiting for owner to start again.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-4 space-y-2">
@@ -512,7 +641,7 @@ export default function CreateOwnPage() {
         </header>
 
         <section className="mt-5 space-y-2">
-          {/* ROOMS TAB */}
+          {/* ROOMS */}
           {!activeRoom && tab === "rooms" ? (
             <>
               {createdCode ? (
@@ -618,7 +747,7 @@ export default function CreateOwnPage() {
             </>
           ) : null}
 
-          {/* CREATE TAB */}
+          {/* CREATE */}
           {!activeRoom && tab === "create" ? (
             <div className="space-y-2">
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
@@ -686,6 +815,7 @@ export default function CreateOwnPage() {
                   aria-hidden="true"
                 />
                 <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+
                 <div className="relative z-[2] flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
@@ -696,7 +826,7 @@ export default function CreateOwnPage() {
                         {createLoading ? "Creating…" : "Create room"}
                       </div>
                       <div className="mt-1 text-[11px] text-white/65">
-                        You’ll share a key to invite friends
+                        Key-only invite
                       </div>
                     </div>
                   </div>
@@ -706,7 +836,7 @@ export default function CreateOwnPage() {
             </div>
           ) : null}
 
-          {/* JOIN TAB */}
+          {/* JOIN */}
           {!activeRoom && tab === "join" ? (
             <div className="space-y-2">
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
@@ -755,42 +885,21 @@ export default function CreateOwnPage() {
           {/* ROOM VIEW */}
           {activeRoom ? (
             <>
-              {roomLoading ? (
-                <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
-                      ⏳
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-semibold text-white/85">Loading room</div>
-                      <div className="text-[11px] text-white/55">Leaderboard + chat…</div>
-                    </div>
-                  </div>
-                </div>
-              ) : roomMsg ? (
-                <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-white/85">
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-rose-300/20 bg-rose-500/10 text-[16px]">
-                      ⚠️
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold">Room error</div>
-                      <div className="mt-1 text-[12px] text-white/80">{roomMsg}</div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
               {/* Leaderboard */}
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold text-white/85">Room ranking</div>
-                  <div className="text-[11px] text-white/55">Top 100</div>
+                  <div className="text-[12px] font-semibold text-white/85">
+                    Room ranking {roomInfo ? `• Round ${roomInfo.current_round}` : ""}
+                  </div>
+                  <div className="text-[11px] text-white/55">
+                    {roomInfo?.is_active ? "Live" : "Finished"}
+                  </div>
                 </div>
+
                 <div className="mt-3 space-y-2">
                   {roomBoard.length === 0 ? (
                     <div className="text-[12px] text-white/60">
-                      No points yet. Once room scoring is wired, it will show here.
+                      No points yet. Points start from 0 for this room round.
                     </div>
                   ) : (
                     roomBoard.map((r) => (
@@ -808,7 +917,6 @@ export default function CreateOwnPage() {
                                 {r.username || "Player"}
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-white/55 truncate">{r.user_id}</div>
                           </div>
                           <div className="shrink-0 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
                             <div className="text-[10px] text-white/55">Points</div>
@@ -893,6 +1001,37 @@ export default function CreateOwnPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Owner actions */}
+              {roomInfo?.is_owner ? (
+                <div className="pt-2">
+                  {actionMsg ? (
+                    <div className="mb-2 rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px] text-white/85">
+                      <span className="mr-2">⚠️</span>
+                      {actionMsg}
+                    </div>
+                  ) : null}
+
+                  <button
+                    onClick={deleteRoom}
+                    disabled={actionLoading}
+                    className={cx(
+                      "w-full rounded-3xl border border-rose-300/25 bg-rose-500/10 px-5 py-4 text-left transition active:scale-[0.98]",
+                      actionLoading && "opacity-70 pointer-events-none"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[15px] font-semibold">Delete room</div>
+                        <div className="mt-1 text-[11px] text-white/70">
+                          Removes room for everyone (cannot be undone)
+                        </div>
+                      </div>
+                      <div className="text-white/55">→</div>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>
