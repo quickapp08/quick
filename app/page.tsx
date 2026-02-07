@@ -24,21 +24,14 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function Chip({ label, icon }: { label: string; icon: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75">
-      <span className="text-[12px] leading-none">{icon}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
-
 function IconBadge({
   icon,
   tone,
+  size = "md",
 }: {
   icon: string;
   tone?: "blue" | "slate" | "emerald" | "rose";
+  size?: "sm" | "md";
 }) {
   const cls =
     tone === "emerald"
@@ -47,32 +40,37 @@ function IconBadge({
       ? "border-rose-300/20 bg-rose-500/12 text-rose-100"
       : tone === "blue"
       ? "border-blue-300/20 bg-blue-500/12 text-blue-100"
-      : "border-white/12 bg-white/6 text-white/80";
+      : "border-white/12 bg-white/6 text-white/85";
+
+  const box = size === "sm" ? "h-9 w-9 rounded-2xl" : "h-10 w-10 rounded-2xl";
+  const ico = size === "sm" ? "text-[15px]" : "text-[16px]";
 
   return (
-    <div
-      className={cx("grid h-10 w-10 place-items-center rounded-2xl border", cls)}
-      aria-hidden="true"
-    >
-      <span className="text-[16px] leading-none">{icon}</span>
+    <div className={cx("grid place-items-center border", box, cls)} aria-hidden="true">
+      <span className={cx("leading-none", ico)}>{icon}</span>
     </div>
   );
 }
 
-function CardLink({
+function StatPill({ icon, label }: { icon: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold text-white/80">
+      <span className="text-[12px] leading-none">{icon}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function TileLink({
   href,
   title,
-  desc,
   icon,
   variant = "secondary",
-  disabled = false,
 }: {
   href: string;
   title: string;
-  desc: string;
-  icon?: string;
+  icon: string;
   variant?: "primary" | "secondary" | "ghost";
-  disabled?: boolean;
 }) {
   const base =
     "group relative overflow-hidden block w-full rounded-3xl px-4 py-4 text-left transition touch-manipulation " +
@@ -81,44 +79,21 @@ function CardLink({
 
   const styles = {
     primary:
-      "border border-blue-300/25 bg-gradient-to-b from-blue-500/24 to-blue-500/10 " +
+      "border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 " +
       "hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.30)]",
     secondary:
       "border border-white/12 bg-white/6 hover:border-white/22 hover:bg-white/10 " +
       "hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]",
-    ghost:
-      "border border-white/12 bg-transparent hover:bg-white/6 hover:border-white/22",
+    ghost: "border border-white/12 bg-transparent hover:bg-white/6 hover:border-white/22",
   } as const;
 
-  const content = (
-    <div className="relative z-[2] flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        {icon ? (
-          <IconBadge
-            icon={icon}
-            tone={variant === "primary" ? "blue" : "slate"}
-          />
-        ) : null}
-        <div className="min-w-0">
-          <div className="text-[15px] font-semibold text-white/95">{title}</div>
-          <div className="mt-1 text-[12px] leading-snug text-white/65">{desc}</div>
-        </div>
-      </div>
-      <div className="shrink-0 text-white/45">→</div>
-    </div>
-  );
-
-  // Premium overlays (visual only)
   const overlays =
     variant === "primary" ? (
       <>
-        {/* soft glow blob */}
         <div
-          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/20 blur-2xl"
+          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/18 blur-2xl"
           aria-hidden="true"
         />
-
-        {/* animated shine sweep (hover) */}
         <div
           className={cx(
             "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
@@ -128,49 +103,38 @@ function CardLink({
           )}
           aria-hidden="true"
         />
-
-        {/* subtle inner border */}
-        <div
-          className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6"
-          aria-hidden="true"
-        />
+        <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
       </>
     ) : (
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5"
-        aria-hidden="true"
-      />
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
     );
-
-  if (disabled) {
-    return (
-      <div className={cx(base, styles.secondary, "opacity-60 cursor-not-allowed")} aria-disabled>
-        {overlays}
-        {content}
-      </div>
-    );
-  }
 
   return (
     <Link href={href} className={cx(base, styles[variant])}>
       {overlays}
-      {content}
+      <div className="relative z-[2] flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconBadge icon={icon} tone={variant === "primary" ? "blue" : "slate"} />
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-white/95">{title}</div>
+          </div>
+        </div>
+        <div className="shrink-0 text-white/45">→</div>
+      </div>
     </Link>
   );
 }
 
-function CardButton({
+function TileButton({
   title,
-  desc,
+  icon,
   onClick,
   locked,
-  icon,
 }: {
   title: string;
-  desc: string;
+  icon: string;
   onClick: () => void;
   locked?: boolean;
-  icon?: string;
 }) {
   return (
     <button
@@ -182,10 +146,8 @@ function CardButton({
         locked ? "opacity-95" : ""
       )}
     >
-      {/* premium inner ring */}
       <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
 
-      {/* locked overlay (visual only, still clickable) */}
       {locked ? (
         <>
           <div className="pointer-events-none absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]" aria-hidden="true" />
@@ -198,16 +160,14 @@ function CardButton({
         </>
       ) : null}
 
-      {/* subtle glow blob */}
       <div
         className={cx(
           "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl",
-          locked ? "bg-rose-500/10" : "bg-blue-500/12"
+          locked ? "bg-rose-500/10" : "bg-blue-500/10"
         )}
         aria-hidden="true"
       />
 
-      {/* tiny shine on hover (secondary style) */}
       <div
         className={cx(
           "pointer-events-none absolute -left-32 top-0 h-full w-32 rotate-[20deg]",
@@ -220,10 +180,9 @@ function CardButton({
 
       <div className="relative z-[2] flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          {icon ? <IconBadge icon={icon} tone={locked ? "rose" : "slate"} /> : null}
+          <IconBadge icon={icon} tone={locked ? "rose" : "slate"} />
           <div className="min-w-0">
             <div className="text-[15px] font-semibold text-white/95">{title}</div>
-            <div className="mt-1 text-[12px] leading-snug text-white/65">{desc}</div>
           </div>
         </div>
         <div className="shrink-0 text-white/45">→</div>
@@ -242,6 +201,7 @@ export default function HomePage() {
 
   const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
 
+  // 1) Učitaj session + slušaj promjene
   useEffect(() => {
     let alive = true;
 
@@ -263,6 +223,7 @@ export default function HomePage() {
     };
   }, []);
 
+  // 2) čim ima user, prebaci na MENU
   useEffect(() => {
     if (user) {
       setScreen("menu");
@@ -270,6 +231,7 @@ export default function HomePage() {
     }
   }, [user]);
 
+  // fetch my rank/points
   useEffect(() => {
     let alive = true;
 
@@ -327,6 +289,13 @@ export default function HomePage() {
 
   const myOk = myStatus && myStatus.ok === true ? myStatus : null;
 
+  // header name: prefer nickname from status; fallback to email/guest
+  const headerName = useMemo(() => {
+    if (!user) return "Guest";
+    if (myOk?.nickname) return myOk.nickname;
+    return user.email ? String(user.email).split("@")[0] : "Player";
+  }, [user, myOk?.nickname, user?.email]);
+
   return (
     <main
       className="min-h-[100svh] w-full bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
@@ -336,131 +305,174 @@ export default function HomePage() {
       }}
     >
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+        {/* HEADER (compact, no duplicated options) */}
         <header className="pt-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/70">
-            <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
-            Global speed challenges
-          </div>
-
-          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-center gap-3">
-              <div className="grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-2xl border border-white/12 bg-white/6">
-                <Image
-                  src="/quick-logo.png"
-                  alt="Quick"
-                  width={52}
-                  height={52}
-                  priority
-                  className="h-[52px] w-[52px]"
-                />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[18px] font-extrabold tracking-tight text-white/95">Quick</div>
-
-                    {user && myOk ? (
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/80">
-                          🌍 Rank: #{myOk.world_rank ?? "—"}
-                        </span>
-                        <span className="inline-flex items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/80">
-                          ⚡ Points: {myOk.total_points}
-                        </span>
-                      </div>
-                    ) : user ? (
-                      <div className="mt-1 text-[11px] text-white/55">Loading rank…</div>
-                    ) : null}
-                  </div>
-
-                  <div className="shrink-0 rounded-full border border-blue-300/25 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold text-blue-200">
-                    {modeLabel}
-                  </div>
-                </div>
-
-                <p className="mt-2 text-[12px] leading-relaxed text-white/60">
-                  Be the fastest. Compete in real-time rounds and climb the global leaderboard.
-                </p>
-              </div>
+          <div className="flex items-center justify-between">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/70">
+              <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
+              Global speed challenges
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Chip icon="⌨️" label="Word Quick" />
-              <Chip icon="📸" label="Photo Quick" />
-              <Chip icon="🏆" label="Leaderboard" />
-              <Chip icon="⚙️" label="Settings" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold text-blue-200">
+              {modeLabel}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              {/* left: identity */}
+              <div className="min-w-0">
+                <div className="text-[11px] text-white/55">Profile</div>
+                <div className="mt-0.5 truncate text-[18px] font-extrabold tracking-tight text-white/95">
+                  {headerName}
+                </div>
+
+                {user ? (
+                  myOk ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatPill icon="🌍" label={`Rank #${myOk.world_rank ?? "—"}`} />
+                      <StatPill icon="⚡" label={`${myOk.total_points} points`} />
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-white/55">Loading rank…</div>
+                  )
+                ) : (
+                  <div className="mt-2 text-[11px] text-white/55">
+                    Login to play ranked and unlock Photo Quick.
+                  </div>
+                )}
+              </div>
+
+              {/* right: small logo only (no big Quick title) */}
+              <div className="shrink-0">
+                <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/12 bg-white/6">
+                  <Image
+                    src="/quick-logo.png"
+                    alt="Quick"
+                    width={48}
+                    height={48}
+                    priority
+                    className="h-12 w-12"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </header>
 
+        {/* CONTENT */}
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
-              <CardLink href="/auth?mode=login" title="Login" desc="Continue your ranked progress" icon="🔐" variant="primary" />
-              <CardLink href="/auth?mode=register" title="Register" desc="Create account for Ranked + Tournaments" icon="✨" variant="secondary" />
+              <Link
+                href="/auth?mode=login"
+                className={cx(
+                  "group relative overflow-hidden block w-full rounded-3xl border border-blue-300/25",
+                  "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
+                  "px-4 py-4 text-left transition touch-manipulation",
+                  "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.30)]",
+                  "active:scale-[0.98] active:opacity-95 focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                )}
+              >
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/18 blur-2xl" aria-hidden="true" />
+                <div
+                  className={cx(
+                    "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
+                    "bg-gradient-to-r from-transparent via-white/14 to-transparent blur-xl",
+                    "transition-transform duration-700 ease-out",
+                    "group-hover:translate-x-[520px]"
+                  )}
+                  aria-hidden="true"
+                />
+                <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+
+                <div className="relative z-[2] flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <IconBadge icon="🔐" tone="blue" />
+                    <div className="text-[15px] font-semibold text-white/95">Login</div>
+                  </div>
+                  <div className="text-white/45">→</div>
+                </div>
+              </Link>
+
+              <Link
+                href="/auth?mode=register"
+                className={cx(
+                  "group relative overflow-hidden block w-full rounded-3xl border border-white/12 bg-white/6",
+                  "px-4 py-4 text-left transition touch-manipulation",
+                  "hover:-translate-y-[1px] hover:border-white/22 hover:bg-white/10 hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]",
+                  "active:scale-[0.98] active:opacity-95 focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                )}
+              >
+                <div
+                  className={cx(
+                    "pointer-events-none absolute -left-32 top-0 h-full w-32 rotate-[20deg]",
+                    "bg-gradient-to-r from-transparent via-white/10 to-transparent blur-xl",
+                    "transition-transform duration-700 ease-out",
+                    "group-hover:translate-x-[520px]"
+                  )}
+                  aria-hidden="true"
+                />
+                <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
+
+                <div className="relative z-[2] flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <IconBadge icon="✨" tone="slate" />
+                    <div className="text-[15px] font-semibold text-white/95">Register</div>
+                  </div>
+                  <div className="text-white/45">→</div>
+                </div>
+              </Link>
 
               {/*
+              // Guest mode hidden (keep as-is)
               <button onClick={startGuest} ...>Play as Guest</button>
               */}
 
-              <div className="mt-3 rounded-3xl border border-white/12 bg-white/6 p-4">
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-center gap-3">
-                  <IconBadge icon="🧠" tone="blue" />
-                  <div>
-                    <div className="text-[13px] font-semibold text-white/90">How it works</div>
-                    <div className="mt-0.5 text-[12px] text-white/60">Fast, timed rounds. Simple rules.</div>
+                  <IconBadge icon="🧠" tone="blue" size="sm" />
+                  <div className="text-[12px] text-white/75">
+                    Word Quick = type fast. Photo Quick = snap & vote (account only).
                   </div>
                 </div>
-
-                <ul className="mt-3 space-y-2 text-[12px] leading-relaxed text-white/65">
-                  <li className="flex gap-2">
-                    <span className="text-white/70">•</span>
-                    <span><b>Word Quick</b>: you get 2 minutes to answer when the word drops.</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-white/70">•</span>
-                    <span><b>Photo Quick</b>: submit a photo and get community votes.</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-white/70">•</span>
-                    <span>Guest is unranked. Accounts can join ranked later.</span>
-                  </li>
-                </ul>
               </div>
             </>
           ) : (
             <>
-              <div className="mb-1 flex items-center justify-between">
-                <div className="text-[13px] font-semibold text-white/90">Choose mode</div>
-                <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/70">
-                  Tap a mode to start
+              {/* no "Choose mode" text; simple section label */}
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold uppercase tracking-wider text-white/45">
+                  Home
+                </div>
+                <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/65">
+                  Tap to open
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <CardLink href="/quick-word" title="Word Quick" desc="Fastest wins" icon="⌨️" variant="primary" />
+                <TileLink href="/quick-word" title="Word Quick" icon="⌨️" variant="primary" />
 
                 {user ? (
-                  <CardButton title="Photo Quick" desc="Snap & get voted" icon="📸" onClick={() => router.push("/quick-photo")} />
+                  <TileButton title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
                 ) : (
-                  <CardButton title="Photo Quick" desc="Only for logged in" icon="📸" onClick={openPhoto} locked />
+                  <TileButton title="Photo Quick" icon="📸" onClick={openPhoto} locked />
                 )}
 
-                <CardLink href="/leaderboard" title="Leaderboard" desc="World + Region" icon="🏆" variant="secondary" />
-                <CardLink href="/settings" title="Settings" desc="Theme & account" icon="⚙️" variant="ghost" />
+                <TileLink href="/leaderboard" title="Leaderboard" icon="🏆" variant="secondary" />
+                <TileLink href="/settings" title="Settings" icon="⚙️" variant="ghost" />
               </div>
 
               {user ? (
                 <button
                   onClick={logout}
-                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[14px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
                 >
                   Logout
                 </button>
               ) : (
                 <button
-                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[14px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
                   onClick={() => {
                     setScreen("welcome");
                     setMsg(null);
@@ -473,7 +485,7 @@ export default function HomePage() {
               {msg ? (
                 <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-[12px] leading-relaxed text-white/90">
                   <div className="flex items-start gap-3">
-                    <IconBadge icon="⚠️" tone="rose" />
+                    <IconBadge icon="⚠️" tone="rose" size="sm" />
                     <div className="min-w-0">
                       <div className="text-[13px] font-semibold">Action required</div>
                       <div className="mt-1 text-white/80">{msg}</div>
@@ -500,7 +512,7 @@ export default function HomePage() {
           )}
         </section>
 
-        <footer className="mt-auto pb-2 pt-7 text-center text-[11px] text-white/35">
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
           Quick © {new Date().getFullYear()}
         </footer>
       </div>
