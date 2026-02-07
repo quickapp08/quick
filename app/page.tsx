@@ -24,9 +24,9 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/* ---------------- UI (NO deps) ---------------- */
+/* ---------------- UI only ---------------- */
 
-function Pill({ children }: { children: React.ReactNode }) {
+function HeaderPill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75">
       {children}
@@ -34,11 +34,58 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function IconBadge({ icon }: { icon: string }) {
+function clamp2Style(): React.CSSProperties {
+  return {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
+}
+
+function ActionLink({
+  href,
+  title,
+  icon,
+  primary,
+}: {
+  href: string;
+  title: string;
+  icon: string;
+  primary?: boolean;
+}) {
   return (
-    <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
-      <span className="leading-none">{icon}</span>
-    </div>
+    <Link
+      href={href}
+      className={cx(
+        "group relative flex w-full items-center justify-between gap-3 rounded-3xl border px-5 py-4 transition",
+        "active:scale-[0.98] active:opacity-95",
+        primary
+          ? "border-blue-300/20 bg-gradient-to-b from-blue-500/18 to-white/5 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]"
+          : "border-white/10 bg-white/6 hover:bg-white/10"
+      )}
+    >
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/8 blur-2xl" aria-hidden="true" />
+      <div
+        className={cx(
+          "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[18deg]",
+          "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
+          "transition-transform duration-700 ease-out",
+          "group-hover:translate-x-[520px]"
+        )}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-[2] flex items-center gap-4">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
+          {icon}
+        </div>
+        <div className="text-[16px] font-extrabold tracking-tight text-white/95">{title}</div>
+      </div>
+
+      <div className="relative z-[2] text-white/35 transition group-hover:text-white/60">›</div>
+    </Link>
   );
 }
 
@@ -58,31 +105,17 @@ function Tile({
   primary?: boolean;
 }) {
   const base =
-    "group relative w-full overflow-hidden rounded-3xl border p-4 text-left transition touch-manipulation " +
+    "group relative w-full overflow-hidden rounded-3xl border px-4 py-4 text-left transition touch-manipulation " +
     "active:scale-[0.98] active:opacity-95";
 
   const surface = primary
     ? "border-blue-300/20 bg-gradient-to-b from-blue-500/18 to-white/5 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]"
-    : "border-white/10 bg-white/6 hover:bg-white/9 hover:border-white/16";
+    : "border-white/10 bg-white/6 hover:bg-white/10 hover:border-white/15";
 
-  return href ? (
-    <Link href={href} className={cx(base, surface)}>
-      <TileInner title={title} icon={icon} locked={locked} />
-    </Link>
-  ) : (
-    <button onClick={onClick} className={cx(base, surface)} type="button">
-      <TileInner title={title} icon={icon} locked={locked} />
-    </button>
-  );
-}
-
-function TileInner({ title, icon, locked }: { title: string; icon: string; locked?: boolean }) {
-  return (
+  const inner = (
     <>
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/8 blur-2xl"
-        aria-hidden="true"
-      />
+      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/8 blur-2xl" aria-hidden="true" />
       <div
         className={cx(
           "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[18deg]",
@@ -92,7 +125,6 @@ function TileInner({ title, icon, locked }: { title: string; icon: string; locke
         )}
         aria-hidden="true"
       />
-      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
 
       {locked ? (
         <div
@@ -105,19 +137,42 @@ function TileInner({ title, icon, locked }: { title: string; icon: string; locke
 
       <div className="relative z-[2] flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <IconBadge icon={icon} />
-          {/* always one line */}
+          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 text-[18px] shadow-[0_10px_25px_rgba(0,0,0,0.28)]">
+            {icon}
+          </div>
+
+          {/* NO TRUNCATE: show up to 2 lines cleanly */}
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-extrabold tracking-tight text-white/95">{title}</div>
+            <div
+              className="text-[14px] font-extrabold leading-tight tracking-tight text-white/95"
+              style={clamp2Style()}
+            >
+              {title}
+            </div>
           </div>
         </div>
-        <div className="text-white/35 transition group-hover:text-white/55">›</div>
+
+        <div className="shrink-0 text-white/35 transition group-hover:text-white/60">›</div>
       </div>
     </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={cx(base, surface)}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <button onClick={onClick} className={cx(base, surface)} type="button">
+      {inner}
+    </button>
+  );
 }
 
-/* ---------------- PAGE (LOGIC SAME) ---------------- */
+/* ---------------- PAGE (LOGIC UNCHANGED) ---------------- */
 
 export default function HomePage() {
   const router = useRouter();
@@ -208,64 +263,62 @@ export default function HomePage() {
         paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
       }}
     >
-      {/* Background */}
+      {/* background */}
       <div className="fixed inset-0 -z-10 bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950" />
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(1200px_700px_at_50%_-10%,rgba(59,130,246,0.18),transparent_55%)]" />
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_600px_at_0%_30%,rgba(255,255,255,0.06),transparent_60%)]" />
 
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* HEADER */}
-        <header className="pt-1">
-          <div className="flex items-center justify-between">
-            <Pill>
-              <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
-              Global
-            </Pill>
+        {/* top pills */}
+        <div className="pt-1 flex items-center justify-between">
+          <HeaderPill>
+            <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
+            Global
+          </HeaderPill>
+          <HeaderPill>{modeLabel}</HeaderPill>
+        </div>
 
-            <Pill>{modeLabel}</Pill>
-          </div>
-
-          <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.38)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-white/55">Username</div>
-                <div className="mt-0.5 truncate text-[20px] font-extrabold tracking-tight text-white/95">
-                  {headerName}
-                </div>
-
-                {user ? (
-                  myOk ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Pill>🌍 #{myOk.world_rank ?? "—"}</Pill>
-                      <Pill>⚡ {myOk.total_points} pts</Pill>
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-[11px] text-white/45">Loading…</div>
-                  )
-                ) : null}
+        {/* header card */}
+        <header className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.38)]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold text-white/55">Username</div>
+              <div className="mt-0.5 truncate text-[20px] font-extrabold tracking-tight text-white/95">
+                {headerName}
               </div>
 
-              {/* Brand logo - NOT avatar looking */}
-              <div className="shrink-0">
-                <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-white/12 bg-white/6">
-                  <div className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-blue-500/18 blur-2xl" />
-                  <Image src="/quick-logo.png" alt="Quick" width={44} height={44} className="opacity-95" />
-                </div>
+              {user ? (
+                myOk ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <HeaderPill>🌍 #{myOk.world_rank ?? "—"}</HeaderPill>
+                    <HeaderPill>⚡ {myOk.total_points} pts</HeaderPill>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-white/45">Loading…</div>
+                )
+              ) : null}
+            </div>
+
+            <div className="shrink-0">
+              <div className="relative grid h-12 w-12 place-items-center rounded-2xl border border-white/12 bg-white/6">
+                <div className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-blue-500/18 blur-2xl" />
+                <Image src="/quick-logo.png" alt="Quick" width={44} height={44} className="opacity-95" />
               </div>
             </div>
           </div>
         </header>
 
-        {/* CONTENT */}
+        {/* content */}
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
-              <Tile title="Login" icon="🔐" href="/auth?mode=login" primary />
-              <Tile title="Register" icon="✨" href="/auth?mode=register" />
+              {/* FIXED: clean big buttons */}
+              <ActionLink href="/auth?mode=login" title="Login" icon="🔐" primary />
+              <ActionLink href="/auth?mode=register" title="Register" icon="✨" />
             </>
           ) : (
             <>
-              {/* Modes */}
+              {/* modes */}
               <div className="grid grid-cols-2 gap-3">
                 <Tile title="Word Quick" icon="⌨️" href="/quick-word" primary />
                 {user ? (
@@ -275,13 +328,13 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Social */}
+              {/* social */}
               <div className="grid grid-cols-2 gap-3">
                 <Tile title="Create Own" icon="👥" onClick={() => {}} locked />
                 <Tile title="Tournaments" icon="🏟️" onClick={() => {}} locked />
               </div>
 
-              {/* Meta */}
+              {/* meta */}
               <div className="grid grid-cols-2 gap-3">
                 <Tile title="Leaderboard" icon="🏆" href="/leaderboard" />
                 <Tile title="Settings" icon="⚙️" href="/settings" />
