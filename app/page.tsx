@@ -21,40 +21,13 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/* -------------------- UI atoms (no logic changes) -------------------- */
+/* -------------------- Small UI helpers -------------------- */
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75">
       {children}
     </span>
-  );
-}
-
-function IconBadge({
-  icon,
-  tone = "slate",
-}: {
-  icon: string;
-  tone?: "blue" | "slate" | "rose";
-}) {
-  const toneCls =
-    tone === "blue"
-      ? "border-blue-300/18 bg-blue-500/12 text-blue-100"
-      : tone === "rose"
-      ? "border-rose-300/18 bg-rose-500/12 text-rose-100"
-      : "border-white/10 bg-white/6 text-white/85";
-
-  return (
-    <div
-      className={cx(
-        "grid h-11 w-11 place-items-center rounded-2xl border shadow-[0_14px_38px_rgba(0,0,0,0.40)] backdrop-blur-[6px]",
-        toneCls
-      )}
-      aria-hidden="true"
-    >
-      <span className="text-[17px] leading-none">{icon}</span>
-    </div>
   );
 }
 
@@ -95,12 +68,19 @@ function IconButton({
   );
 }
 
-function Surface({ children }: { children: React.ReactNode }) {
+function SoftCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div
       className={cx(
-        "rounded-3xl border border-white/10 bg-white/[0.06]",
-        "shadow-[0_22px_70px_rgba(0,0,0,0.45)] backdrop-blur-[7px]"
+        "rounded-3xl border border-white/10 bg-white/[0.06] overflow-hidden",
+        "shadow-[0_22px_70px_rgba(0,0,0,0.45)] backdrop-blur-[7px]",
+        className
       )}
     >
       {children}
@@ -108,182 +88,131 @@ function Surface({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ActionRow({
-  href,
-  title,
-  icon,
-  variant = "secondary",
-}: {
-  href: string;
-  title: string;
-  icon: string;
-  variant?: "primary" | "secondary";
-}) {
-  const variantCls =
-    variant === "primary"
-      ? "border-blue-300/18 bg-gradient-to-b from-blue-500/20 to-white/5 hover:shadow-[0_0_55px_rgba(59,130,246,0.26)]"
-      : "border-white/10 bg-white/6 hover:bg-white/10 hover:shadow-[0_0_36px_rgba(59,130,246,0.12)]";
-
+function MiniBadge({ icon, text }: { icon: string; text: string }) {
   return (
-    <Link
-      href={href}
-      className={cx(
-        "group relative flex w-full items-center justify-between gap-3 rounded-3xl border px-5 py-5 transition",
-        "active:scale-[0.98] active:opacity-95",
-        variantCls
-      )}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/7"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/10 blur-2xl"
-        aria-hidden="true"
-      />
-      <div
-        className={cx(
-          "pointer-events-none absolute -left-44 top-0 h-full w-44 rotate-[18deg]",
-          "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
-          "transition-transform duration-700 ease-out",
-          "group-hover:translate-x-[560px]"
-        )}
-        aria-hidden="true"
-      />
-
-      <div className="relative z-[2] flex items-center gap-4">
-        <IconBadge icon={icon} tone={variant === "primary" ? "blue" : "slate"} />
-        <div className="text-[18px] font-extrabold tracking-tight text-white/95">
-          {title}
-        </div>
-      </div>
-
-      <div className="relative z-[2] text-white/35 transition group-hover:text-white/60">
-        ›
-      </div>
-    </Link>
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/80">
+      <span className="text-[14px] leading-none">{icon}</span>
+      {text}
+    </span>
   );
 }
 
-function GameTile({
+function Tile({
   title,
   icon,
   href,
   onClick,
-  primary,
+  tone = "dark",
   locked,
 }: {
   title: string;
   icon: string;
   href?: string;
   onClick?: () => void;
-  primary?: boolean;
+  tone?: "blue" | "dark";
   locked?: boolean;
 }) {
-  const surface = primary
-    ? "border-blue-300/18 bg-gradient-to-b from-blue-500/18 to-white/5"
-    : "border-white/10 bg-white/6";
-
   const base = cx(
-    "group relative w-full overflow-hidden rounded-3xl border transition touch-manipulation",
-    "shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-[6px]",
-    "hover:bg-white/8 active:scale-[0.98] active:opacity-95",
-    surface
+    "relative w-full rounded-3xl border overflow-hidden",
+    "shadow-[0_18px_55px_rgba(0,0,0,0.42)] backdrop-blur-[6px] transition",
+    "active:scale-[0.98] active:opacity-95 hover:bg-white/10"
   );
+
+  const toneCls =
+    tone === "blue"
+      ? "border-blue-300/16 bg-gradient-to-b from-blue-500/18 to-white/5"
+      : "border-white/10 bg-white/6";
 
   const inner = (
     <>
+      {/* subtle depth gradient */}
       <div
-        className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/7"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent"
         aria-hidden="true"
       />
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/10 blur-2xl"
-        aria-hidden="true"
-      />
-
-      {locked ? (
-        <div
-          className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-rose-300/18 bg-rose-500/10 px-2.5 py-1 text-[11px] font-extrabold text-rose-100"
-          aria-hidden="true"
-        >
-          🔒
-        </div>
-      ) : null}
-
-      <div className="relative z-[2] flex items-center justify-between gap-3 p-5">
+      <div className="relative z-[2] flex items-center justify-between gap-4 p-5">
         <div className="flex items-center gap-4 min-w-0">
-          <IconBadge icon={icon} tone={primary ? "blue" : "slate"} />
+          <div
+            className={cx(
+              "grid h-12 w-12 place-items-center rounded-2xl border",
+              "border-white/10 bg-white/6 shadow-[0_14px_38px_rgba(0,0,0,0.35)]"
+            )}
+            aria-hidden="true"
+          >
+            <span className="text-[18px] leading-none">{icon}</span>
+          </div>
+
           <div className="min-w-0">
-            {/* ✅ full word visible: no truncation */}
-            <div className="whitespace-nowrap text-[18px] font-extrabold tracking-tight text-white/95">
+            {/* no truncation */}
+            <div className="text-[18px] font-extrabold tracking-tight text-white/95">
               {title}
             </div>
           </div>
         </div>
-        <div className="text-white/35 transition group-hover:text-white/60">›</div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {locked ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-rose-300/18 bg-rose-500/10 px-3 py-1 text-[11px] font-extrabold text-rose-100">
+              🔒 Locked
+            </span>
+          ) : null}
+          <div className="text-white/35 text-[18px] leading-none">›</div>
+        </div>
       </div>
     </>
   );
 
-  if (href) return <Link href={href} className={base}>{inner}</Link>;
+  if (href) return <Link href={href} className={cx(base, toneCls)}>{inner}</Link>;
   return (
-    <button type="button" onClick={onClick} className={base}>
+    <button type="button" onClick={onClick} className={cx(base, toneCls)}>
       {inner}
     </button>
   );
 }
 
-function ListCard({
+function ActionRow({
+  href,
   title,
   icon,
-  href,
-  onClick,
-  locked,
+  primary,
 }: {
+  href: string;
   title: string;
   icon: string;
-  href?: string;
-  onClick?: () => void;
-  locked?: boolean;
+  primary?: boolean;
 }) {
-  const base = cx(
-    "group relative w-full overflow-hidden rounded-3xl border border-white/10 bg-white/6",
-    "shadow-[0_18px_55px_rgba(0,0,0,0.40)] backdrop-blur-[6px] transition",
-    "hover:bg-white/10 active:scale-[0.98] active:opacity-95"
-  );
-
-  const inner = (
-    <>
-      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/7" aria-hidden="true" />
-      <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/8 blur-2xl" aria-hidden="true" />
-
-      {locked ? (
+  return (
+    <Link
+      href={href}
+      className={cx(
+        "relative flex w-full items-center justify-between gap-4 rounded-3xl border px-5 py-5 overflow-hidden",
+        "shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[7px] transition",
+        "active:scale-[0.98] active:opacity-95 hover:bg-white/10",
+        primary
+          ? "border-blue-300/16 bg-gradient-to-b from-blue-500/18 to-white/5"
+          : "border-white/10 bg-white/6"
+      )}
+    >
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent"
+        aria-hidden="true"
+      />
+      <div className="relative z-[2] flex items-center gap-4">
         <div
-          className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-rose-300/18 bg-rose-500/10 px-3 py-1 text-[11px] font-extrabold text-rose-100"
+          className={cx(
+            "grid h-12 w-12 place-items-center rounded-2xl border",
+            "border-white/10 bg-white/6 shadow-[0_14px_38px_rgba(0,0,0,0.35)]"
+          )}
           aria-hidden="true"
         >
-          🔒 Locked
+          <span className="text-[18px] leading-none">{icon}</span>
         </div>
-      ) : null}
-
-      <div className="relative z-[2] flex items-center justify-between gap-3 p-5">
-        <div className="flex items-center gap-4 min-w-0">
-          <IconBadge icon={icon} />
-          <div className="text-[18px] font-extrabold tracking-tight text-white/95">
-            {title}
-          </div>
+        <div className="text-[18px] font-extrabold tracking-tight text-white/95">
+          {title}
         </div>
-        <div className="text-white/35 transition group-hover:text-white/60">›</div>
       </div>
-    </>
-  );
-
-  if (href) return <Link href={href} className={base}>{inner}</Link>;
-  return (
-    <button type="button" onClick={onClick} className={base}>
-      {inner}
-    </button>
+      <div className="relative z-[2] text-white/35 text-[18px] leading-none">›</div>
+    </Link>
   );
 }
 
@@ -324,6 +253,7 @@ export default function HomePage() {
       setMsg(null);
     } else {
       setMyStatus(null);
+      setScreen("welcome");
     }
   }, [user]);
 
@@ -383,7 +313,7 @@ export default function HomePage() {
       }}
     >
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* TOP BAR */}
+        {/* Top bar */}
         <header className="pt-2">
           <div className="flex items-center justify-between">
             <Pill>
@@ -391,33 +321,21 @@ export default function HomePage() {
               Global
             </Pill>
 
-            {/* ✅ bell only when logged in */}
             {user ? (
               <IconButton
                 icon="🔔"
                 badge={0}
                 ariaLabel="Notifications"
-                onClick={() => {
-                  // UI only for later
-                }}
+                onClick={() => {}}
               />
             ) : (
               <div className="h-10 w-10" />
             )}
           </div>
 
-          {/* ✅ Logged-in: centered game name, no logo */}
-          {user ? (
-            <div className="mt-4 text-center">
-              <div className="text-[24px] font-extrabold tracking-tight text-white/95">
-                Quick
-              </div>
-            </div>
-          ) : null}
-
-          {/* ✅ Welcome: ONLY title (not a selectable card), no extra empty box */}
+          {/* Welcome header (GOOD) */}
           {!user ? (
-            <div className="mt-5 flex items-center justify-center gap-3">
+            <div className="mt-6 flex items-center justify-center gap-3">
               <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_38px_rgba(0,0,0,0.40)]">
                 <Image
                   src="/quick-logo.png"
@@ -432,47 +350,55 @@ export default function HomePage() {
                 Quick
               </div>
             </div>
-          ) : null}
+          ) : (
+            /* Logged in title */
+            <div className="mt-4 text-center">
+              <div className="text-[26px] font-extrabold tracking-tight text-white/95">
+                Quick
+              </div>
+              <div className="mt-1 text-[12px] font-semibold text-white/55">
+                Choose your mode
+              </div>
+            </div>
+          )}
 
-          {/* Player card (logged in) */}
+          {/* Logged-in compact player card */}
           {user ? (
             <div className="mt-4">
-              <Surface>
+              <SoftCard>
                 <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="text-[12px] font-semibold text-white/55">Player</div>
-                      <div className="mt-1 text-[30px] font-extrabold tracking-tight text-white/95">
+                      <div className="text-[12px] font-semibold text-white/55">
+                        Player
+                      </div>
+                      <div className="mt-1 text-[26px] font-extrabold tracking-tight text-white/95">
                         {myOk?.nickname ?? "…"}
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/80">
-                          🌍 #{myOk?.world_rank ?? "—"}
-                        </span>
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/80">
-                          ⚡ {myOk?.total_points ?? 0} pts
-                        </span>
+                        <MiniBadge icon="🌍" text={`#${myOk?.world_rank ?? "—"}`} />
+                        <MiniBadge icon="⚡" text={`${myOk?.total_points ?? 0} pts`} />
                       </div>
                     </div>
 
-                    {/* ✅ Avatar slot (UI only, later connect to profile avatar) */}
+                    {/* Avatar slot (later connect to profile avatar) */}
                     <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_14px_38px_rgba(0,0,0,0.40)]">
                       <span className="text-[18px]">👤</span>
                     </div>
                   </div>
                 </div>
-              </Surface>
+              </SoftCard>
             </div>
           ) : null}
         </header>
 
-        {/* CONTENT */}
+        {/* Content */}
         <section className="mt-5 space-y-4">
           {screen === "welcome" ? (
             <>
-              <ActionRow href="/auth?mode=login" title="Login" icon="🔐" variant="primary" />
-              <ActionRow href="/auth?mode=register" title="Register" icon="✨" variant="secondary" />
+              <ActionRow href="/auth?mode=login" title="Login" icon="🔐" primary />
+              <ActionRow href="/auth?mode=register" title="Register" icon="✨" />
 
               {msg ? (
                 <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-[12px] text-white/85">
@@ -482,22 +408,33 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              {/* ✅ Word + Photo in one row */}
+              {/* Word + Photo row */}
               <div className="grid grid-cols-2 gap-3">
-                <GameTile title="Word Quick" icon="⌨️" href="/quick-word" primary />
+                <Tile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
-                  <GameTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
+                  <Tile
+                    title="Photo Quick"
+                    icon="📸"
+                    onClick={() => router.push("/quick-photo")}
+                    tone="dark"
+                  />
                 ) : (
-                  <GameTile title="Photo Quick" icon="📸" onClick={openPhoto} locked />
+                  <Tile
+                    title="Photo Quick"
+                    icon="📸"
+                    onClick={openPhoto}
+                    tone="dark"
+                    locked
+                  />
                 )}
               </div>
 
-              {/* ✅ Everything else below, FULL cards (no missing “kucica”) */}
+              {/* Rest stacked, clean + consistent */}
               <div className="space-y-3">
-                <ListCard title="Create Own" icon="👥" locked />
-                <ListCard title="Tournaments" icon="🏟️" locked />
-                <ListCard title="Leaderboard" icon="🏆" href="/leaderboard" />
-                <ListCard title="Settings" icon="⚙️" href="/settings" />
+                <Tile title="Create Own" icon="👥" onClick={() => {}} locked tone="dark" />
+                <Tile title="Tournaments" icon="🏟️" onClick={() => {}} locked tone="dark" />
+                <Tile title="Leaderboard" icon="🏆" href="/leaderboard" tone="dark" />
+                <Tile title="Settings" icon="⚙️" href="/settings" tone="dark" />
               </div>
 
               <button
