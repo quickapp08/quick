@@ -4,6 +4,15 @@ import type { Metadata, Viewport } from "next";
 export const metadata: Metadata = {
   title: "Quick",
   description: "Global speed challenges",
+
+  // ✅ PWA / install support
+  applicationName: "Quick",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#1e3a8a",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
