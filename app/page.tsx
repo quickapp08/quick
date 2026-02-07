@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { getRank } from "../../lib/rank";
+import { supabase } from "../lib/supabase";
+import { getRank } from "../lib/rank";
 
 type Mode = "word" | "photo";
 type Scope = "world" | "region";
