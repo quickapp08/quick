@@ -224,6 +224,8 @@ export default function HomePage() {
                 variant="secondary"
               />
 
+              {/*
+              // GUEST MODE (HIDDEN FOR DEPLOY)
               <button
                 onClick={startGuest}
                 className="w-full rounded-2xl border border-white/12 bg-transparent px-5 py-4 text-left transition hover:bg-white/6 hover:border-white/22 active:scale-[0.98] active:opacity-95 touch-manipulation"
@@ -238,6 +240,7 @@ export default function HomePage() {
                   <div className="shrink-0 text-white/55">→</div>
                 </div>
               </button>
+              */}
 
               <div className="mt-5 rounded-2xl border border-white/12 bg-white/6 p-4">
                 <div className="text-[12px] font-semibold text-white/85">How it works</div>
@@ -259,42 +262,18 @@ export default function HomePage() {
 
               {/* MENU: na mobitelu 2 stupca (kako želiš), ali kompaktno */}
               <div className="grid grid-cols-2 gap-3">
-                <CardLink
-                  href="/quick-word"
-                  title="Word Quick"
-                  desc="Fastest wins"
-                  variant="primary"
-                />
+                <CardLink href="/quick-word" title="Word Quick" desc="Fastest wins" variant="primary" />
 
                 {/* Photo quick: ako nije user -> locked */}
                 {user ? (
-                  <CardButton
-                    title="Photo Quick"
-                    desc="Snap & get voted"
-                    onClick={() => router.push("/quick-photo")}
-                  />
+                  <CardButton title="Photo Quick" desc="Snap & get voted" onClick={() => router.push("/quick-photo")} />
                 ) : (
-                  <CardButton
-                    title="Photo Quick"
-                    desc="Only for logged in"
-                    onClick={openPhoto}
-                    locked
-                  />
+                  <CardButton title="Photo Quick" desc="Only for logged in" onClick={openPhoto} locked />
                 )}
 
-                <CardLink
-                  href="/leaderboard"
-                  title="Leaderboard"
-                  desc="World + Region"
-                  variant="secondary"
-                />
+                <CardLink href="/leaderboard" title="Leaderboard" desc="World + Region" variant="secondary" />
 
-                <CardLink
-                  href="/settings"
-                  title="Settings"
-                  desc="Theme & account"
-                  variant="ghost"
-                />
+                <CardLink href="/settings" title="Settings" desc="Theme & account" variant="ghost" />
               </div>
 
               {user ? (
