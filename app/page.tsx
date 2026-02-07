@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -21,11 +21,11 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/* -------------------- UI bits (compact) -------------------- */
+/* -------------------- UI bits -------------------- */
 
 function TopPill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75">
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75 backdrop-blur-[6px]">
       {children}
     </span>
   );
@@ -49,7 +49,7 @@ function IconBtn({
       aria-label={ariaLabel}
       className={cx(
         "relative grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/5",
-        "shadow-[0_14px_40px_rgba(0,0,0,0.42)] backdrop-blur-[6px] transition",
+        "shadow-[0_14px_40px_rgba(0,0,0,0.42)] backdrop-blur-[8px] transition",
         "hover:bg-white/8 active:scale-[0.98]"
       )}
     >
@@ -74,7 +74,7 @@ function GlassCard({
     <div
       className={cx(
         "rounded-3xl border border-white/10 bg-white/[0.06]",
-        "shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[7px]",
+        "shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[10px]",
         className
       )}
     >
@@ -85,43 +85,46 @@ function GlassCard({
 
 function MiniChip({ icon, text }: { icon: string; text: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/80">
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/80 backdrop-blur-[8px]">
       <span className="text-[14px] leading-none">{icon}</span>
       <span>{text}</span>
     </span>
   );
 }
 
+/** Big tile (Word/Photo) */
 function ModeTile({
   title,
   icon,
   href,
   onClick,
   tone = "dark",
-  locked,
 }: {
   title: string;
   icon: string;
   href?: string;
   onClick?: () => void;
   tone?: "blue" | "dark";
-  locked?: boolean;
 }) {
   const base = cx(
     "relative w-full rounded-3xl border overflow-hidden",
-    "shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-[6px] transition",
+    "shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
     "active:scale-[0.98] active:opacity-95 hover:bg-white/10"
   );
 
   const toneCls =
     tone === "blue"
-      ? "border-blue-300/14 bg-gradient-to-b from-blue-500/16 to-white/5"
+      ? "border-blue-300/16 bg-gradient-to-b from-blue-500/18 to-white/5"
       : "border-white/10 bg-white/6";
 
   const inner = (
     <>
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/14 blur-2xl"
         aria-hidden="true"
       />
       <div className="relative z-[2] flex items-center justify-between gap-3 px-4 py-4">
@@ -135,15 +138,7 @@ function ModeTile({
             </div>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {locked ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-rose-300/18 bg-rose-500/10 px-2.5 py-1 text-[10px] font-extrabold text-rose-100">
-              🔒 Locked
-            </span>
-          ) : null}
-          <span className="text-white/35 text-[18px] leading-none">›</span>
-        </div>
+        <span className="text-white/35 text-[18px] leading-none">›</span>
       </div>
     </>
   );
@@ -156,49 +151,51 @@ function ModeTile({
   );
 }
 
-function SmallTile({
+/** Compact tile (Create/Tournaments) - NO LOCKED BADGE */
+function CompactTile({
   title,
   icon,
   onClick,
-  locked,
+  disabledLook,
 }: {
   title: string;
   icon: string;
   onClick?: () => void;
-  locked?: boolean;
+  disabledLook?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cx(
-        "relative w-full rounded-3xl border border-white/10 bg-white/6 overflow-hidden",
-        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[6px] transition",
-        "active:scale-[0.98] active:opacity-95 hover:bg-white/10"
+        "relative w-full rounded-3xl border overflow-hidden px-4 py-4 text-left",
+        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
+        "active:scale-[0.98] active:opacity-95 hover:bg-white/10",
+        disabledLook ? "border-white/8 bg-white/4 opacity-80" : "border-white/10 bg-white/6"
       )}
     >
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent"
         aria-hidden="true"
       />
-      <div className="relative z-[2] flex items-center justify-between gap-3 px-4 py-4">
+      <div className="relative z-[2] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_12px_34px_rgba(0,0,0,0.35)]">
+          <div
+            className={cx(
+              "grid h-11 w-11 place-items-center rounded-2xl border bg-white/6 shadow-[0_12px_34px_rgba(0,0,0,0.35)]",
+              disabledLook ? "border-white/8" : "border-white/10"
+            )}
+          >
             <span className="text-[18px] leading-none">{icon}</span>
           </div>
-          <div className="text-[15px] font-extrabold tracking-tight text-white/95 leading-tight">
-            {title}
+          <div className="min-w-0">
+            <div className="text-[15px] font-extrabold tracking-tight text-white/95 leading-tight">
+              {title}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {locked ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-rose-300/18 bg-rose-500/10 px-2.5 py-1 text-[10px] font-extrabold text-rose-100">
-              🔒 Locked
-            </span>
-          ) : null}
-          <span className="text-white/35 text-[18px] leading-none">›</span>
-        </div>
+        <span className="text-white/35 text-[18px] leading-none">›</span>
       </div>
     </button>
   );
@@ -219,7 +216,7 @@ function IconOnlyLink({
       aria-label={ariaLabel}
       className={cx(
         "grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/6",
-        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[6px] transition",
+        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
         "hover:bg-white/10 active:scale-[0.98]"
       )}
     >
@@ -318,14 +315,20 @@ export default function HomePage() {
 
   return (
     <main
-      className="min-h-[100svh] w-full bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      className="relative min-h-[100svh] w-full text-white bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950"
       style={{
         paddingTop: "max(env(safe-area-inset-top), 18px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
-      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* Top row */}
+      {/* Brighter “glow” background */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-blue-500/12 blur-[70px]" />
+        <div className="absolute top-[240px] left-[-140px] h-[420px] w-[420px] rounded-full bg-blue-500/10 blur-[70px]" />
+        <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
+      </div>
+
+      <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         <header className="pt-2">
           <div className="flex items-center justify-between">
             <TopPill>
@@ -340,9 +343,8 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Center logo only (no text) */}
           <div className="mt-5 flex justify-center">
-            <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
+            <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-[10px]">
               <Image
                 src="/quick-logo.png"
                 alt="Quick"
@@ -354,7 +356,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Logged in: compact player bar */}
           {user ? (
             <div className="mt-4">
               <GlassCard>
@@ -371,7 +372,6 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* avatar slot */}
                     <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
                       <span className="text-[18px]">👤</span>
                     </div>
@@ -382,16 +382,14 @@ export default function HomePage() {
           ) : null}
         </header>
 
-        {/* Content */}
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
-              {/* Welcome screen stays clean (you said it's good) */}
               <Link
                 href="/auth?mode=login"
                 className={cx(
                   "relative flex w-full items-center justify-between gap-4 rounded-3xl border px-5 py-5 overflow-hidden",
-                  "shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[7px] transition",
+                  "shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
                   "active:scale-[0.98] active:opacity-95 hover:bg-white/10",
                   "border-blue-300/16 bg-gradient-to-b from-blue-500/18 to-white/5"
                 )}
@@ -412,7 +410,7 @@ export default function HomePage() {
                 href="/auth?mode=register"
                 className={cx(
                   "relative flex w-full items-center justify-between gap-4 rounded-3xl border px-5 py-5 overflow-hidden",
-                  "shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[7px] transition",
+                  "shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
                   "active:scale-[0.98] active:opacity-95 hover:bg-white/10",
                   "border-white/10 bg-white/6"
                 )}
@@ -437,28 +435,21 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              {/* MODES (compact) */}
               <div className="grid grid-cols-2 gap-3">
                 <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
-                  <ModeTile
-                    title="Photo Quick"
-                    icon="📸"
-                    onClick={() => router.push("/quick-photo")}
-                    tone="dark"
-                  />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} tone="dark" />
                 ) : (
-                  <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" locked />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
                 )}
               </div>
 
-              {/* Create + Tournaments compact row */}
+              {/* NO locked badge; only muted look */}
               <div className="grid grid-cols-2 gap-3">
-                <SmallTile title="Create Own" icon="👥" onClick={() => {}} locked />
-                <SmallTile title="Tournaments" icon="🏟️" onClick={() => {}} locked />
+                <CompactTile title="Create Own" icon="👥" onClick={() => {}} disabledLook />
+                <CompactTile title="Tournaments" icon="🏟️" onClick={() => {}} disabledLook />
               </div>
 
-              {/* Icon-only utilities */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <IconOnlyLink href="/leaderboard" icon="🏆" ariaLabel="Leaderboard" />
@@ -468,9 +459,9 @@ export default function HomePage() {
                 <button
                   onClick={logout}
                   className={cx(
-                    "rounded-2xl border border-white/10 bg-white/6 px-4 py-3",
-                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[6px]",
-                    "text-[14px] font-extrabold text-white/90 transition",
+                    "rounded-2xl border border-blue-300/14 bg-gradient-to-b from-blue-500/14 to-white/5 px-4 py-3",
+                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[10px]",
+                    "text-[14px] font-extrabold text-white/92 transition",
                     "hover:bg-white/10 active:scale-[0.98]"
                   )}
                 >
