@@ -1,11 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 
 type Screen = "welcome" | "menu";
+
+type MyStatus =
+  | {
+      ok: true;
+      nickname: string;
+      total_points: number;
+      world_rank: number | null;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -119,6 +132,9 @@ export default function HomePage() {
   const [user, setUser] = useState<null | { id: string; email?: string | null }>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // NEW: my status (rank + points) - minimal, no breaking changes
+  const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
+
   // 1) Učitaj session + slušaj promjene
   useEffect(() => {
     let alive = true;
@@ -149,6 +165,37 @@ export default function HomePage() {
     }
   }, [user]);
 
+  // NEW: fetch my rank/points when user is logged in (and refresh occasionally)
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMyStatus() {
+      if (!user) {
+        setMyStatus(null);
+        return;
+      }
+
+      const res = await supabase.rpc("get_my_status");
+      if (!alive) return;
+
+      if (res.error) {
+        // RPC error (rare). Don't break UI.
+        setMyStatus({ ok: false, error: res.error.message });
+        return;
+      }
+
+      setMyStatus(res.data as MyStatus);
+    }
+
+    loadMyStatus();
+    const t = setInterval(loadMyStatus, 15000);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [user]);
+
   const modeLabel = useMemo(() => {
     if (user) return "Ranked (account)";
     return "Guest (unranked)";
@@ -164,6 +211,7 @@ export default function HomePage() {
     router.refresh();
     setScreen("welcome");
     setMsg(null);
+    setMyStatus(null);
   };
 
   const openPhoto = () => {
@@ -173,6 +221,8 @@ export default function HomePage() {
     }
     router.push("/quick-photo");
   };
+
+  const myOk = myStatus && myStatus.ok === true ? myStatus : null;
 
   return (
     <main
@@ -190,11 +240,40 @@ export default function HomePage() {
             Global speed challenges
           </div>
 
-          <h1 className="mt-4 text-5xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.05em" }}>
-            QUICK
-          </h1>
+          {/* CHANGED: Logo instead of QUICK title */}
+          <div className="mt-4 flex items-center gap-3">
+            <Image
+              src="/quick-logo.png"
+              alt="Quick"
+              width={52}
+              height={52}
+              priority
+              className="h-[52px] w-[52px]"
+            />
 
-          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
+            <div className="min-w-0">
+              <div className="text-[18px] font-extrabold tracking-tight text-white/95">
+                Quick
+              </div>
+
+              {/* NEW: show rank + points ONLY if logged in and status ok */}
+              {user && myOk ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/80">
+                    Rank: #{myOk.world_rank ?? "—"}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/80">
+                    Points: {myOk.total_points}
+                  </span>
+                </div>
+              ) : user ? (
+                // logged in but status not ok -> don't break the UI
+                <div className="mt-1 text-[11px] text-white/55">Loading rank…</div>
+              ) : null}
+            </div>
+          </div>
+
+          <p className="mt-3 text-[13px] leading-relaxed text-white/70">
             Be the fastest. Compete in real-time rounds and climb the global leaderboard.
           </p>
 
