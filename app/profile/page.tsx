@@ -42,6 +42,14 @@ function getRank(points: number) {
   return "Rookie";
 }
 
+function rankTone(rank: string) {
+  if (rank === "Godlike") return "border-yellow-300/25 bg-yellow-500/10 text-yellow-100";
+  if (rank === "Flash") return "border-emerald-300/25 bg-emerald-500/10 text-emerald-100";
+  if (rank === "No Joke") return "border-blue-300/25 bg-blue-500/10 text-blue-100";
+  if (rank === "Speedy") return "border-cyan-300/25 bg-cyan-500/10 text-cyan-100";
+  return "border-white/12 bg-white/6 text-white/80";
+}
+
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -132,6 +140,8 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
+  const avatarPreview = (avatarUrl || profile?.avatar_url || "").trim();
+
   return (
     <main
       className={cx(
@@ -146,63 +156,144 @@ export default function ProfilePage() {
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         <header className="pt-2">
           <TopBar title="Profile" />
-          <h1 className="mt-5 text-2xl font-bold tracking-tight">Profile</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
-            Nickname i bio se prikazuju na leaderboardu.
-          </p>
+          <div className="mt-4">
+            <h1 className="text-[22px] font-bold tracking-tight">Profile</h1>
+            <p className="mt-1 text-[12px] leading-relaxed text-white/60">
+              Nickname i bio se prikazuju na leaderboardu.
+            </p>
+          </div>
         </header>
 
-        <section className="mt-5 space-y-3">
-          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-            <div className="text-[12px] text-white/70">Status</div>
-            <div className="mt-1 text-[14px] font-semibold">
-              {loading ? "Loading…" : `Rank: ${rank} • Points: ${pointsTotal}`}
-            </div>
-            {profile?.username_changed_at ? (
-              <div className="mt-2 text-[11px] text-white/45">
-                Username last changed: {new Date(profile.username_changed_at).toLocaleString()}
-              </div>
-            ) : (
-              <div className="mt-2 text-[11px] text-white/45">
-                Username change time not set (OK).
-              </div>
+        <section className="mt-4 space-y-3">
+          {/* HERO STATUS CARD */}
+          <div
+            className={cx(
+              "rounded-3xl border border-blue-300/20",
+              "bg-gradient-to-b from-blue-500/16 to-white/5",
+              "p-4"
             )}
+          >
+            <div className="flex items-center gap-3">
+              {/* Avatar */}
+              <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-white/12 bg-white/6">
+                {avatarPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={avatarPreview}
+                    alt="Avatar"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      // fallback to blank without changing logic/state
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="grid h-full w-full place-items-center text-[18px] text-white/70">
+                    👤
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] text-white/65">Status</div>
+                <div className="mt-0.5 truncate text-[15px] font-semibold text-white/92">
+                  {loading ? "Loading…" : (profile?.username || "No nickname yet")}
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span
+                    className={cx(
+                      "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                      rankTone(rank)
+                    )}
+                  >
+                    {loading ? "Rank…" : rank}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold text-white/85">
+                    {loading ? "Points…" : `${pointsTotal} pts`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[11px] text-white/55">
+              {profile?.username_changed_at ? (
+                <>
+                  Username last changed:{" "}
+                  <span className="text-white/75">
+                    {new Date(profile.username_changed_at).toLocaleString()}
+                  </span>
+                </>
+              ) : (
+                <>Username change time not set (OK).</>
+              )}
+            </div>
           </div>
 
-          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-            <label className="block">
-              <div className="mb-1 text-[12px] font-medium text-white/70">Nickname</div>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="npr. Nirus"
-                disabled={loading || saving}
-                className="w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
-              />
-            </label>
+          {/* FORM CARD */}
+          <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[13px] font-semibold text-white/90">Edit profile</div>
+                <div className="mt-0.5 text-[11px] text-white/55">
+                  Keep it short and clean for the leaderboard.
+                </div>
+              </div>
+              <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/70">
+                Public
+              </div>
+            </div>
 
-            <label className="mt-4 block">
-              <div className="mb-1 text-[12px] font-medium text-white/70">Bio</div>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="kratko o sebi…"
-                disabled={loading || saving}
-                rows={3}
-                className="w-full resize-none rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
-              />
-            </label>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <div className="mb-1 text-[12px] font-medium text-white/70">Nickname</div>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="npr. Nirus"
+                  disabled={loading || saving}
+                  className={cx(
+                    "w-full rounded-2xl border px-4 py-3 text-[15px] outline-none",
+                    "border-white/12 bg-black/20 text-white placeholder:text-white/35",
+                    "focus:border-white/25 focus:bg-black/30 focus:ring-2 focus:ring-blue-400/40"
+                  )}
+                />
+              </label>
 
-            <label className="mt-4 block">
-              <div className="mb-1 text-[12px] font-medium text-white/70">Avatar URL</div>
-              <input
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="https://…"
-                disabled={loading || saving}
-                className="w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
-              />
-            </label>
+              <label className="block">
+                <div className="mb-1 text-[12px] font-medium text-white/70">Bio</div>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="kratko o sebi…"
+                  disabled={loading || saving}
+                  rows={3}
+                  className={cx(
+                    "w-full resize-none rounded-2xl border px-4 py-3 text-[15px] outline-none",
+                    "border-white/12 bg-black/20 text-white placeholder:text-white/35",
+                    "focus:border-white/25 focus:bg-black/30 focus:ring-2 focus:ring-blue-400/40"
+                  )}
+                />
+                <div className="mt-1 text-[11px] text-white/45">Tip: 1–2 rečenice je najbolje.</div>
+              </label>
+
+              <label className="block">
+                <div className="mb-1 text-[12px] font-medium text-white/70">Avatar URL</div>
+                <input
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  placeholder="https://…"
+                  disabled={loading || saving}
+                  className={cx(
+                    "w-full rounded-2xl border px-4 py-3 text-[15px] outline-none",
+                    "border-white/12 bg-black/20 text-white placeholder:text-white/35",
+                    "focus:border-white/25 focus:bg-black/30 focus:ring-2 focus:ring-blue-400/40"
+                  )}
+                />
+                <div className="mt-1 text-[11px] text-white/45">
+                  Works best with square images (1:1).
+                </div>
+              </label>
+            </div>
 
             <button
               onClick={save}
@@ -214,19 +305,31 @@ export default function ProfilePage() {
                   : "border-white/10 bg-white/5 opacity-50"
               )}
             >
-              <div className="text-[16px] font-semibold">{saving ? "Saving…" : "Save Profile"}</div>
-              <div className="mt-1 text-[12px] text-white/65">Update nickname, bio, avatar</div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[16px] font-semibold">{saving ? "Saving…" : "Save Profile"}</div>
+                  <div className="mt-1 text-[12px] text-white/65">Update nickname, bio, avatar</div>
+                </div>
+                <div className="text-white/55">→</div>
+              </div>
             </button>
 
             {msg ? (
-              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-white/80">
+              <div
+                className={cx(
+                  "mt-3 rounded-2xl border px-4 py-3 text-[13px]",
+                  msg.includes("✅")
+                    ? "border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
+                    : "border-rose-300/20 bg-rose-500/10 text-rose-100"
+                )}
+              >
                 {msg}
               </div>
             ) : null}
           </div>
         </section>
 
-        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
           Quick • Profile
         </footer>
       </div>
