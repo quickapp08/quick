@@ -113,14 +113,33 @@ type GetCurrentWordResponse =
     }
   | { ok: false; error: string };
 
-function scrambleWord(word: string) {
+// ---------- stable (seeded) scramble so it NEVER keeps changing ----------
+function hashToUint32(str: string) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function scrambleWordSeeded(word: string, seedKey: string) {
   const arr = word.split("");
+  const rand = mulberry32(hashToUint32(seedKey));
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr.join("");
 }
+// -----------------------------------------------------------------------
 
 export default function QuickWordPage() {
   const router = useRouter();
@@ -139,7 +158,6 @@ export default function QuickWordPage() {
       if (!alive) return;
 
       if (!uid) {
-        // force login, no guest
         router.replace("/login");
         return;
       }
@@ -180,10 +198,7 @@ export default function QuickWordPage() {
   const [serverWord, setServerWord] = useState<string>("");
   const [scrambled, setScrambled] = useState<string>("");
 
-  // ✅ used for "already notified" per drop
   const notifiedKeySetRef = useRef<Set<string>>(new Set());
-
-  // ✅ FIX: track previous msLeft so we fire only when crossing <= 1 minute
   const prevMsLeftRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -250,13 +265,21 @@ export default function QuickWordPage() {
     return nextDrop.dropMs;
   }, [activeWindow, nextDrop.dropMs]);
 
-  const lastKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!authReady || !userId) return; // ✅ no guest
+  // ✅ STABLE KEY so effects don't re-run every render
+  const activeWindowKey = useMemo(() => {
+    if (!activeWindow) return null;
+    return `${activeWindow.interval}:${activeWindow.startMs}`;
+  }, [activeWindow?.interval, activeWindow?.startMs]);
 
-    const key = `${activeInterval}:${activeRoundStartMs}`;
-    if (lastKeyRef.current !== key) {
-      lastKeyRef.current = key;
+  const lastKeyRef = useRef<string | null>(null);
+
+  // ✅ ONLY LOAD WORD ONCE PER WINDOW KEY (no more constant re-scramble)
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    if (!activeWindowKey) return;
+
+    if (lastKeyRef.current !== activeWindowKey) {
+      lastKeyRef.current = activeWindowKey;
       setAnswer("");
       setResult(null);
       setSubmitting(false);
@@ -264,12 +287,10 @@ export default function QuickWordPage() {
       setScrambled("");
     }
 
-    if (!activeWindow) return;
-
     const load = async () => {
       const clientNow = Date.now();
       const { data, error } = await supabase.rpc("get_current_word", {
-        p_interval_min: activeWindow.interval,
+        p_interval_min: activeWindow!.interval,
       });
 
       if (error) {
@@ -289,15 +310,16 @@ export default function QuickWordPage() {
       setClientNowAtFetch(clientNow);
 
       setServerWord(w);
-      setScrambled(w ? scrambleWord(w) : "");
+      setScrambled(w ? scrambleWordSeeded(w, activeWindowKey) : "");
     };
 
     load();
-  }, [activeInterval, activeRoundStartMs, activeWindow, authReady, userId]);
+    // IMPORTANT: dependencies are stable strings/numbers, not the activeWindow object
+  }, [activeWindowKey, authReady, userId]);
 
-  // ✅ FIXED notifications: fire only when crossing <= 1 minute (prevents 1:00 crash/spike)
+  // ✅ FIXED notifications: fire only when crossing <= 1 minute
   useEffect(() => {
-    if (!authReady || !userId) return; // ✅ no guest
+    if (!authReady || !userId) return;
     if (!participate) return;
     if (typeof window === "undefined") return;
     if (!("Notification" in window)) return;
@@ -309,16 +331,12 @@ export default function QuickWordPage() {
       const d = nextDropMs(now, i, offset);
       const msLeft = d - now;
 
-      const key = `${i}:${d}`; // unique for that interval's next drop
-      const prevKey = `prev_${i}`; // track msLeft per interval stream
-
+      const key = `${i}:${d}`;
+      const prevKey = `prev_${i}`;
       const prev = prevMsLeftRef.current[prevKey];
 
-      // fire only on crossing from > 1 minute to <= 1 minute
-      const crossed =
-        typeof prev === "number" && prev > oneMin && msLeft <= oneMin && msLeft > 0;
+      const crossed = typeof prev === "number" && prev > oneMin && msLeft <= oneMin && msLeft > 0;
 
-      // store current
       prevMsLeftRef.current[prevKey] = msLeft;
 
       if (!crossed) continue;
@@ -337,14 +355,11 @@ export default function QuickWordPage() {
       }
     }
 
-    // cleanup old keys
-    // (keep set from growing forever)
     for (const k of Array.from(notifiedKeySetRef.current)) {
       const parts = k.split(":");
       if (parts.length !== 2) continue;
       const d = Number(parts[1]);
       if (!Number.isFinite(d)) continue;
-      // remove if the drop is far in the past
       if (d < now - 10 * 60 * 1000) notifiedKeySetRef.current.delete(k);
     }
   }, [now, participate, selectedIntervals, authReady, userId]);
@@ -378,7 +393,7 @@ export default function QuickWordPage() {
   }, [activeWindow, nextDrop.dropMs]);
 
   const onSend = async () => {
-    if (!authReady || !userId) return; // ✅ no guest
+    if (!authReady || !userId) return;
     if (!activeWindow) return;
     if (submitting) return;
 
@@ -439,7 +454,6 @@ export default function QuickWordPage() {
     setEnabledIntervals((prev) => ({ ...prev, [i]: !prev[i] }));
   };
 
-  // ✅ While redirecting / auth check, show a clean loading screen
   if (!authReady || !userId) {
     return (
       <main
