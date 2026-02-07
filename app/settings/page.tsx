@@ -42,6 +42,20 @@ export default function SettingsPage() {
           </p>
         </header>
 
+        <Link
+          href="/profile"
+          className="block rounded-2xl border border-white/12 bg-white/6 px-5 py-4 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+          >     
+          <div className="flex items-center justify-between">
+              <div>
+              <div className="text-[16px] font-semibold text-white/90">Profile</div>
+           <div className="mt-1 text-[12px] text-white/65">Nickname, bio, avatar</div>
+          </div>
+          <div className="text-white/55">→</div>
+         </div>
+        </Link>
+
+
         <section className="mt-6 space-y-3">
           <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
             <div className="text-[12px] text-white/70">Notifications</div>

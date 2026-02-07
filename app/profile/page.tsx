@@ -3,16 +3,44 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { getRank } from "../../lib/rank";
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function TopBar({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <Link
+        href="/settings"
+        className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+      >
+        ← Back
+      </Link>
+      <div className="text-[13px] font-semibold text-white/85">{title}</div>
+      <div className="w-[64px]" />
+    </div>
+  );
+}
 
 type Profile = {
   user_id: string;
   username: string | null;
   bio: string | null;
   avatar_url: string | null;
-  points_total: number;
+  points_total: number | null;
   username_changed_at: string | null;
 };
+
+function getRank(points: number) {
+  if (points >= 1000) return "Godlike";
+  if (points >= 500) return "Flash";
+  if (points >= 200) return "No Joke";
+  if (points >= 100) return "Speedy";
+  if (points >= 50) return "Turtle";
+  if (points >= 10) return "Snail";
+  return "Rookie";
+}
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -20,12 +48,13 @@ export default function ProfilePage() {
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const rank = useMemo(() => getRank(profile?.points_total ?? 0), [profile?.points_total]);
+  const pointsTotal = Number(profile?.points_total ?? 0);
+  const rank = useMemo(() => getRank(pointsTotal), [pointsTotal]);
 
   useEffect(() => {
     (async () => {
@@ -36,8 +65,8 @@ export default function ProfilePage() {
       const user = sessionData.session?.user;
 
       if (!user) {
+        setMsg("Moraš biti ulogiran da uređuješ profil.");
         setLoading(false);
-        setMsg("You must be logged in.");
         return;
       }
 
@@ -53,22 +82,26 @@ export default function ProfilePage() {
         return;
       }
 
-      setProfile(data as Profile);
-      setUsername((data as Profile).username ?? "");
-      setBio((data as Profile).bio ?? "");
-      setAvatarUrl((data as Profile).avatar_url ?? "");
+      const p = data as Profile;
+      setProfile(p);
+      setUsername(p.username ?? "");
+      setBio(p.bio ?? "");
+      setAvatarUrl(p.avatar_url ?? "");
       setLoading(false);
     })();
   }, []);
 
-  const saveProfile = async () => {
+  const save = async () => {
     setSaving(true);
     setMsg(null);
 
+    const u = username.trim();
+    const a = avatarUrl.trim();
+
     const { data, error } = await supabase.rpc("update_profile", {
-      p_username: username.trim() ? username.trim() : null,
+      p_username: u ? u : null,
       p_bio: bio ?? null,
-      p_avatar_url: avatarUrl.trim() ? avatarUrl.trim() : null,
+      p_avatar_url: a ? a : null,
     });
 
     if (error) {
@@ -83,7 +116,7 @@ export default function ProfilePage() {
       return;
     }
 
-    // refresh profile
+    // refresh
     const { data: sessionData } = await supabase.auth.getSession();
     const user = sessionData.session?.user;
     if (user) {
@@ -95,13 +128,16 @@ export default function ProfilePage() {
       if (fresh) setProfile(fresh as Profile);
     }
 
-    setMsg("Saved ✅");
+    setMsg("Spremljeno ✅");
     setSaving(false);
   };
 
   return (
     <main
-      className="min-h-[100svh] w-full bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      className={cx(
+        "min-h-[100svh] w-full",
+        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      )}
       style={{
         paddingTop: "max(env(safe-area-inset-top), 18px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
@@ -109,103 +145,86 @@ export default function ProfilePage() {
     >
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         <header className="pt-2">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/"
-              className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98]"
-            >
-              ← Back
-            </Link>
-            <div className="text-[13px] font-semibold text-white/85">Profile</div>
-            <div className="w-[64px]" />
-          </div>
-
-          <h1 className="mt-5 text-2xl font-bold tracking-tight">Your Profile</h1>
-          <p className="mt-2 text-[13px] text-white/70">Rank, username, avatar and bio.</p>
+          <TopBar title="Profile" />
+          <h1 className="mt-5 text-2xl font-bold tracking-tight">Profile</h1>
+          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
+            Nickname i bio se prikazuju na leaderboardu.
+          </p>
         </header>
 
-        {loading ? (
-          <div className="mt-6 rounded-2xl border border-white/12 bg-white/6 p-4 text-white/70">
-            Loading...
-          </div>
-        ) : profile ? (
-          <section className="mt-6 space-y-3">
-            <div className="rounded-2xl border border-blue-300/20 bg-blue-500/10 p-4">
-              <div className="text-[12px] text-white/70">Total points</div>
-              <div className="mt-1 text-[22px] font-extrabold">{profile.points_total}</div>
-              <div className="mt-2 text-[12px] text-white/70">Rank</div>
-              <div className="mt-1 text-[16px] font-semibold">{rank}</div>
+        <section className="mt-5 space-y-3">
+          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <div className="text-[12px] text-white/70">Status</div>
+            <div className="mt-1 text-[14px] font-semibold">
+              {loading ? "Loading…" : `Rank: ${rank} • Points: ${pointsTotal}`}
             </div>
-
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-              <div className="text-[12px] font-semibold text-white/85">Username</div>
-              <div className="mt-1 text-[11px] text-white/55">
-                Can be changed once every 5 days.
+            {profile?.username_changed_at ? (
+              <div className="mt-2 text-[11px] text-white/45">
+                Username last changed: {new Date(profile.username_changed_at).toLocaleString()}
               </div>
+            ) : (
+              <div className="mt-2 text-[11px] text-white/45">
+                Username change time not set (OK).
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <label className="block">
+              <div className="mb-1 text-[12px] font-medium text-white/70">Nickname</div>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Your name"
-                className="mt-3 w-full rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none"
+                placeholder="npr. Nirus"
+                disabled={loading || saving}
+                className="w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
               />
-            </div>
+            </label>
 
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-              <div className="text-[12px] font-semibold text-white/85">Avatar URL</div>
-              <div className="mt-1 text-[11px] text-white/55">
-                For now: paste image URL. Next: upload to Supabase Storage.
-              </div>
-              <input
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="https://..."
-                className="mt-3 w-full rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none"
-              />
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt="avatar"
-                  className="mt-3 h-20 w-20 rounded-2xl border border-white/12 object-cover"
-                />
-              ) : null}
-            </div>
-
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-              <div className="text-[12px] font-semibold text-white/85">Bio</div>
+            <label className="mt-4 block">
+              <div className="mb-1 text-[12px] font-medium text-white/70">Bio</div>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="Write something about you..."
-                className="mt-3 w-full resize-none rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none"
-                rows={4}
+                placeholder="kratko o sebi…"
+                disabled={loading || saving}
+                rows={3}
+                className="w-full resize-none rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
               />
-            </div>
+            </label>
+
+            <label className="mt-4 block">
+              <div className="mb-1 text-[12px] font-medium text-white/70">Avatar URL</div>
+              <input
+                value={avatarUrl}
+                onChange={(e) => setAvatarUrl(e.target.value)}
+                placeholder="https://…"
+                disabled={loading || saving}
+                className="w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3 text-[15px] text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-black/30"
+              />
+            </label>
 
             <button
-              onClick={saveProfile}
-              disabled={saving}
-              className="w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] disabled:opacity-50"
+              onClick={save}
+              disabled={loading || saving}
+              className={cx(
+                "mt-4 w-full rounded-2xl border px-5 py-4 text-left transition active:scale-[0.98] touch-manipulation",
+                !loading && !saving
+                  ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
+                  : "border-white/10 bg-white/5 opacity-50"
+              )}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[16px] font-semibold">{saving ? "Saving..." : "Save changes"}</div>
-                  <div className="mt-1 text-[12px] text-white/65">Server enforces 5-day username cooldown</div>
-                </div>
-                <div className="text-white/55">→</div>
-              </div>
+              <div className="text-[16px] font-semibold">{saving ? "Saving…" : "Save Profile"}</div>
+              <div className="mt-1 text-[12px] text-white/65">Update nickname, bio, avatar</div>
             </button>
 
             {msg ? (
-              <div className="rounded-2xl border border-white/12 bg-white/6 p-4 text-[13px] text-white/75">
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-white/80">
                 {msg}
               </div>
             ) : null}
-          </section>
-        ) : (
-          <div className="mt-6 rounded-2xl border border-white/12 bg-white/6 p-4 text-white/70">
-            {msg ?? "No profile found."}
           </div>
-        )}
+        </section>
 
         <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
           Quick • Profile
