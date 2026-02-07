@@ -438,7 +438,7 @@ export default function HomePage() {
               <div className="grid grid-cols-2 gap-3">
                 <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
-                  <ModeTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} tone="dark" />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} tone="blue" />
                 ) : (
                   <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
                 )}
