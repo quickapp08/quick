@@ -180,7 +180,11 @@ export default function QuickWordPage() {
   const [serverWord, setServerWord] = useState<string>("");
   const [scrambled, setScrambled] = useState<string>("");
 
+  // ✅ used for "already notified" per drop
   const notifiedKeySetRef = useRef<Set<string>>(new Set());
+
+  // ✅ FIX: track previous msLeft so we fire only when crossing <= 1 minute
+  const prevMsLeftRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     const saved = readLS<Settings>("quick_word_settings_v3", {
@@ -291,10 +295,11 @@ export default function QuickWordPage() {
     load();
   }, [activeInterval, activeRoundStartMs, activeWindow, authReady, userId]);
 
-  // notifications: 1 minute before drop for EACH selected interval
+  // ✅ FIXED notifications: fire only when crossing <= 1 minute (prevents 1:00 crash/spike)
   useEffect(() => {
     if (!authReady || !userId) return; // ✅ no guest
     if (!participate) return;
+    if (typeof window === "undefined") return;
     if (!("Notification" in window)) return;
 
     const oneMin = 60 * 1000;
@@ -303,26 +308,44 @@ export default function QuickWordPage() {
       const offset = OFFSETS_MS[i];
       const d = nextDropMs(now, i, offset);
       const msLeft = d - now;
-      const key = `${i}:${d}`;
 
-      if (msLeft <= oneMin && msLeft > 0 && !notifiedKeySetRef.current.has(key)) {
-        notifiedKeySetRef.current.add(key);
+      const key = `${i}:${d}`; // unique for that interval's next drop
+      const prevKey = `prev_${i}`; // track msLeft per interval stream
 
-        if (Notification.permission === "granted") {
-          // ✅ MUST NOT CRASH on Android
-          try {
-            new Notification("Quick — Word incoming", {
-              body: "Word incoming in 1 minute",
-            });
-          } catch (e) {
-            console.warn("Notification failed:", e);
-          }
+      const prev = prevMsLeftRef.current[prevKey];
+
+      // fire only on crossing from > 1 minute to <= 1 minute
+      const crossed =
+        typeof prev === "number" && prev > oneMin && msLeft <= oneMin && msLeft > 0;
+
+      // store current
+      prevMsLeftRef.current[prevKey] = msLeft;
+
+      if (!crossed) continue;
+      if (notifiedKeySetRef.current.has(key)) continue;
+
+      notifiedKeySetRef.current.add(key);
+
+      if (Notification.permission === "granted") {
+        try {
+          new Notification("Quick — Word incoming", {
+            body: "Word incoming in 1 minute",
+          });
+        } catch (e) {
+          console.warn("Notification failed:", e);
         }
       }
+    }
 
-      if (msLeft < -5 * 60 * 1000) {
-        notifiedKeySetRef.current.delete(key);
-      }
+    // cleanup old keys
+    // (keep set from growing forever)
+    for (const k of Array.from(notifiedKeySetRef.current)) {
+      const parts = k.split(":");
+      if (parts.length !== 2) continue;
+      const d = Number(parts[1]);
+      if (!Number.isFinite(d)) continue;
+      // remove if the drop is far in the past
+      if (d < now - 10 * 60 * 1000) notifiedKeySetRef.current.delete(k);
     }
   }, [now, participate, selectedIntervals, authReady, userId]);
 
@@ -433,9 +456,7 @@ export default function QuickWordPage() {
           <header className="pt-2">
             <TopBar title="Word Quick" />
             <h1 className="mt-5 text-2xl font-bold tracking-tight">Word Quick</h1>
-            <p className="mt-2 text-[13px] leading-relaxed text-white/70">
-              Redirecting to login…
-            </p>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/70">Redirecting to login…</p>
           </header>
         </div>
       </main>
