@@ -328,7 +328,7 @@ export default function HomePage() {
         <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
       </div>
 
-      <div className="relative mx-auto flex h-[100svh] max-w-md flex-col px-4 overflow-x-hidden">
+      <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4 overflow-x-hidden overflow-y-auto">
         <header className="pt-2">
           <div className="flex items-center justify-between">
             <TopPill>
@@ -447,7 +447,7 @@ export default function HomePage() {
               {/* NO locked badge; only muted look */}
               <div className="grid grid-cols-2 gap-3">
   <CompactTile
-    title="Create Own"
+    title="Together"
     icon="👥"
     onClick={() => router.push("/create-own")}
   />
