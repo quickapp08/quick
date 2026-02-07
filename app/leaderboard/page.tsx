@@ -35,11 +35,92 @@ function TopBar({ title }: { title: string }) {
   );
 }
 
+function Segmented({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string; icon: string }>;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/12 bg-white/6 p-1">
+      <div className="grid grid-cols-2 gap-1">
+        {options.map((o) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => onChange(o.value)}
+              className={cx(
+                "relative overflow-hidden rounded-3xl px-3 py-3 text-left transition active:scale-[0.98] touch-manipulation",
+                active
+                  ? "border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.18)]"
+                  : "border border-transparent hover:bg-white/8"
+              )}
+            >
+              {active ? (
+                <>
+                  <div
+                    className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-500/14 blur-2xl"
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6"
+                    aria-hidden="true"
+                  />
+                </>
+              ) : null}
+
+              <div className="flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                  {o.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-white/95">{o.label}</div>
+                  <div className={cx("text-[11px]", active ? "text-white/65" : "text-white/45")}>
+                    {active ? "Selected" : "Tap to switch"}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Medal({ place }: { place: number }) {
+  if (place === 1) return <span aria-hidden="true">🥇</span>;
+  if (place === 2) return <span aria-hidden="true">🥈</span>;
+  if (place === 3) return <span aria-hidden="true">🥉</span>;
+  return <span className="text-white/55" aria-hidden="true">#{place}</span>;
+}
+
+function PlaceBadge({ place }: { place: number }) {
+  const isTop = place <= 3;
+  return (
+    <div
+      className={cx(
+        "grid h-10 w-10 place-items-center rounded-2xl border text-[13px] font-extrabold",
+        isTop
+          ? "border-blue-300/25 bg-blue-500/12 text-white"
+          : "border-white/12 bg-white/5 text-white/80"
+      )}
+      aria-label={`Place ${place}`}
+    >
+      <Medal place={place} />
+    </div>
+  );
+}
+
 export default function LeaderboardPage() {
   const [mode, setMode] = useState<Mode>("word");
   const [scope, setScope] = useState<Scope>("world");
 
-  const [region, setRegion] = useState<string>("HR"); // default HR (možeš kasnije automatski iz profila)
+  const [region, setRegion] = useState<string>("HR"); // default HR
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -91,142 +172,188 @@ export default function LeaderboardPage() {
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         <header className="pt-2">
           <TopBar title="Leaderboard" />
-          <h1 className="mt-5 text-2xl font-bold tracking-tight">Leaderboard</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-white/70">
-            {title}
-          </p>
+
+          {/* Header card */}
+          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-white/85">Leaderboard</div>
+                <div className="mt-1 text-[12px] text-white/65">{title}</div>
+              </div>
+
+              <div className="shrink-0 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75">
+                🏁 Top 100
+              </div>
+            </div>
+          </div>
 
           {/* Controls */}
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setMode("word")}
-              className={cx(
-                "rounded-2xl border px-4 py-3 text-left transition active:scale-[0.98]",
-                mode === "word"
-                  ? "border-blue-300/25 bg-blue-500/15"
-                  : "border-white/12 bg-white/6 hover:bg-white/10"
-              )}
-            >
-              <div className="text-[14px] font-semibold">Word Quick</div>
-              <div className="mt-1 text-[11px] text-white/60">Speed typing rounds</div>
-            </button>
+          <div className="mt-4 space-y-2">
+            <Segmented
+              value={mode}
+              onChange={(v) => setMode(v as Mode)}
+              options={[
+                { value: "word", label: "Word", icon: "⌨️" },
+                { value: "photo", label: "Photo", icon: "📸" },
+              ]}
+            />
+
+            <Segmented
+              value={scope}
+              onChange={(v) => setScope(v as Scope)}
+              options={[
+                { value: "world", label: "World", icon: "🌍" },
+                { value: "region", label: "Region", icon: "🗺️" },
+              ]}
+            />
+
+            {scope === "region" ? (
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[12px] font-semibold text-white/85">Region code</div>
+                  <div className="text-[11px] text-white/45">ISO (e.g. HR, DE, US)</div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                    🏳️
+                  </div>
+                  <input
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value.toUpperCase())}
+                    placeholder="HR"
+                    className="w-full rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none focus:border-white/25 focus:bg-slate-950/55"
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <button
-              onClick={() => setMode("photo")}
+              onClick={fetchBoard}
               className={cx(
-                "rounded-2xl border px-4 py-3 text-left transition active:scale-[0.98]",
-                mode === "photo"
-                  ? "border-blue-300/25 bg-blue-500/15"
-                  : "border-white/12 bg-white/6 hover:bg-white/10"
+                "group relative overflow-hidden mt-1 w-full rounded-3xl border border-blue-300/25",
+                "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
+                "px-5 py-4 text-left transition touch-manipulation",
+                "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
+                "active:scale-[0.98]"
               )}
             >
-              <div className="text-[14px] font-semibold">Photo Quick</div>
-              <div className="mt-1 text-[11px] text-white/60">Community-voted photos</div>
-            </button>
-          </div>
-
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setScope("world")}
-              className={cx(
-                "rounded-2xl border px-4 py-3 text-left transition active:scale-[0.98]",
-                scope === "world"
-                  ? "border-emerald-300/25 bg-emerald-500/10"
-                  : "border-white/12 bg-white/6 hover:bg-white/10"
-              )}
-            >
-              <div className="text-[14px] font-semibold">World</div>
-              <div className="mt-1 text-[11px] text-white/60">Global top 100</div>
-            </button>
-
-            <button
-              onClick={() => setScope("region")}
-              className={cx(
-                "rounded-2xl border px-4 py-3 text-left transition active:scale-[0.98]",
-                scope === "region"
-                  ? "border-emerald-300/25 bg-emerald-500/10"
-                  : "border-white/12 bg-white/6 hover:bg-white/10"
-              )}
-            >
-              <div className="text-[14px] font-semibold">Region</div>
-              <div className="mt-1 text-[11px] text-white/60">Country-based</div>
-            </button>
-          </div>
-
-          {scope === "region" ? (
-            <div className="mt-2 rounded-2xl border border-white/12 bg-white/6 p-3">
-              <div className="text-[12px] text-white/70">Region (country code)</div>
-              <input
-                value={region}
-                onChange={(e) => setRegion(e.target.value.toUpperCase())}
-                placeholder="HR"
-                className="mt-2 w-full rounded-xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none"
+              <div
+                className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/16 blur-2xl"
+                aria-hidden="true"
               />
-              <div className="mt-2 text-[11px] text-white/45">
-                Use ISO code like HR, DE, US. Later we’ll auto-read from profile.
-              </div>
-            </div>
-          ) : null}
+              <div
+                className={cx(
+                  "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
+                  "bg-gradient-to-r from-transparent via-white/14 to-transparent blur-xl",
+                  "transition-transform duration-700 ease-out",
+                  "group-hover:translate-x-[520px]"
+                )}
+                aria-hidden="true"
+              />
+              <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
 
-          <button
-            onClick={fetchBoard}
-            className="mt-3 w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98]"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[15px] font-semibold">Refresh</div>
-                <div className="mt-1 text-[12px] text-white/65">Load top 100</div>
+              <div className="relative z-[2] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
+                    🔄
+                  </div>
+                  <div>
+                    <div className="text-[15px] font-semibold">Refresh</div>
+                    <div className="mt-1 text-[11px] text-white/65">Reload current top 100</div>
+                  </div>
+                </div>
+                <div className="text-white/55">→</div>
               </div>
-              <div className="text-white/55">→</div>
-            </div>
-          </button>
+            </button>
+          </div>
         </header>
 
         {/* List */}
         <section className="mt-5 space-y-2">
           {loading ? (
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4 text-white/70">
-              Loading...
-            </div>
-          ) : msg ? (
-            <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-4 text-white/80">
-              {msg}
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4 text-white/70">
-              No data yet.
-            </div>
-          ) : (
-            rows.map((r) => (
-              <div
-                key={r.user_id}
-                className="rounded-2xl border border-white/12 bg-white/6 p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/12 bg-white/5 text-[13px] font-bold">
-                      {r.place}
-                    </div>
-                    <div>
-                      <div className="text-[14px] font-semibold">
-                        {r.username}{" "}
-                        <span className="text-[11px] text-white/45">
-                          • {r.country_code}
-                        </span>
-                      </div>
-                      <div className="text-[12px] text-white/60">
-                        Rank: {getRank(r.points_total)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-[12px] text-white/60">Points</div>
-                    <div className="text-[16px] font-bold">{r.points_total}</div>
-                  </div>
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                  ⏳
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-white/85">Loading</div>
+                  <div className="text-[11px] text-white/55">Fetching leaderboard…</div>
                 </div>
               </div>
-            ))
+            </div>
+          ) : msg ? (
+            <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-white/85">
+              <div className="flex items-start gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-rose-300/20 bg-rose-500/10 text-[16px]">
+                  ⚠️
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold">Error</div>
+                  <div className="mt-1 text-[12px] text-white/80">{msg}</div>
+                </div>
+              </div>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                  💤
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-white/85">No data yet</div>
+                  <div className="text-[11px] text-white/55">Try refresh in a moment.</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            rows.map((r) => {
+              const isTop = r.place <= 3;
+
+              return (
+                <div
+                  key={r.user_id}
+                  className={cx(
+                    "rounded-3xl border p-4",
+                    isTop
+                      ? "border-blue-300/20 bg-blue-500/10"
+                      : "border-white/12 bg-white/6"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <PlaceBadge place={r.place} />
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="truncate text-[14px] font-semibold text-white/95">
+                            {r.username}
+                          </div>
+                          <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                            {r.country_code}
+                          </span>
+                        </div>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                            🏷️ {getRank(r.points_total)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <div className="text-[11px] text-white/55">Points</div>
+                      <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
+                        <span className="text-[14px]">⚡</span>
+                        <span className="text-[16px] font-extrabold">{r.points_total}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </section>
 
