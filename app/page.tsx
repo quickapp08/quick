@@ -1,519 +1,470 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
-import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
+import { getRank } from "../../lib/rank";
 
-type Screen = "welcome" | "menu";
+type Mode = "word" | "photo";
+type Scope = "world" | "region";
 
-type MyStatus =
-  | {
-      ok: true;
-      nickname: string;
-      total_points: number;
-      world_rank: number | null;
-    }
-  | {
-      ok: false;
-      error: string;
-    };
+type Row = {
+  place: number;
+  user_id: string;
+  username: string;
+  country_code: string;
+  points_total: number;
+};
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function IconBadge({
-  icon,
-  tone,
-  size = "md",
-}: {
-  icon: string;
-  tone?: "blue" | "slate" | "emerald" | "rose";
-  size?: "sm" | "md";
-}) {
-  const cls =
-    tone === "emerald"
-      ? "border-emerald-300/20 bg-emerald-500/12 text-emerald-100"
-      : tone === "rose"
-      ? "border-rose-300/20 bg-rose-500/12 text-rose-100"
-      : tone === "blue"
-      ? "border-blue-300/20 bg-blue-500/12 text-blue-100"
-      : "border-white/12 bg-white/6 text-white/85";
-
-  const box = size === "sm" ? "h-9 w-9 rounded-2xl" : "h-10 w-10 rounded-2xl";
-  const ico = size === "sm" ? "text-[15px]" : "text-[16px]";
-
+function TopBar({ title }: { title: string }) {
   return (
-    <div className={cx("grid place-items-center border", box, cls)} aria-hidden="true">
-      <span className={cx("leading-none", ico)}>{icon}</span>
+    <div className="flex items-center justify-between">
+      <Link
+        href="/"
+        className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+      >
+        ← Back
+      </Link>
+      <div className="text-[13px] font-semibold text-white/85">{title}</div>
+      <div className="w-[64px]" />
     </div>
   );
 }
 
-function StatPill({ icon, label }: { icon: string; label: string }) {
+function SectionLabel({ icon, label, right }: { icon: string; label: string; right?: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold text-white/80">
-      <span className="text-[12px] leading-none">{icon}</span>
-      <span>{label}</span>
-    </span>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-2xl border border-white/12 bg-white/6 text-[14px]">
+          {icon}
+        </span>
+        <div className="text-[12px] font-semibold uppercase tracking-wider text-white/55">
+          {label}
+        </div>
+      </div>
+      {right ? (
+        <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/65">
+          {right}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function TileLink({
-  href,
+function Segmented({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string; icon: string }>;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/12 bg-white/6 p-1">
+      <div className="grid grid-cols-2 gap-1">
+        {options.map((o) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => onChange(o.value)}
+              className={cx(
+                "group relative overflow-hidden rounded-3xl px-3 py-3 text-left transition active:scale-[0.98] touch-manipulation",
+                active
+                  ? "border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.18)]"
+                  : "border border-transparent hover:bg-white/8"
+              )}
+            >
+              {active ? (
+                <>
+                  <div
+                    className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-500/14 blur-2xl"
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6"
+                    aria-hidden="true"
+                  />
+                  <div
+                    className={cx(
+                      "pointer-events-none absolute -left-36 top-0 h-full w-36 rotate-[20deg]",
+                      "bg-gradient-to-r from-transparent via-white/12 to-transparent blur-xl",
+                      "transition-transform duration-700 ease-out",
+                      "group-hover:translate-x-[520px]"
+                    )}
+                    aria-hidden="true"
+                  />
+                </>
+              ) : null}
+
+              <div className="flex items-center gap-2">
+                <span
+                  className={cx(
+                    "grid h-9 w-9 place-items-center rounded-2xl border bg-white/5 text-[16px]",
+                    active ? "border-blue-300/25" : "border-white/12"
+                  )}
+                >
+                  {o.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-white/95">{o.label}</div>
+                  <div className={cx("text-[11px]", active ? "text-white/65" : "text-white/45")}>
+                    {active ? "Selected" : "Tap"}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function NavTile({
   title,
   icon,
-  variant = "secondary",
+  href,
+  disabled,
+  badge,
 }: {
-  href: string;
   title: string;
   icon: string;
-  variant?: "primary" | "secondary" | "ghost";
+  href?: string;
+  disabled?: boolean;
+  badge?: string;
 }) {
   const base =
-    "group relative overflow-hidden block w-full rounded-3xl px-4 py-4 text-left transition touch-manipulation " +
-    "active:scale-[0.98] active:opacity-95 " +
-    "hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-blue-400/60";
+    "group relative overflow-hidden rounded-3xl border px-4 py-4 text-left transition touch-manipulation " +
+    "active:scale-[0.98] active:opacity-95";
 
-  const styles = {
-    primary:
-      "border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 " +
-      "hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.30)]",
-    secondary:
-      "border border-white/12 bg-white/6 hover:border-white/22 hover:bg-white/10 " +
-      "hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]",
-    ghost: "border border-white/12 bg-transparent hover:bg-white/6 hover:border-white/22",
-  } as const;
+  const cls = disabled
+    ? "border-white/10 bg-white/5 opacity-70 cursor-not-allowed"
+    : "border-white/12 bg-white/6 hover:border-white/22 hover:bg-white/10 hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]";
 
-  const overlays =
-    variant === "primary" ? (
-      <>
-        <div
-          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/18 blur-2xl"
-          aria-hidden="true"
-        />
-        <div
-          className={cx(
-            "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
-            "bg-gradient-to-r from-transparent via-white/14 to-transparent blur-xl",
-            "transition-transform duration-700 ease-out",
-            "group-hover:translate-x-[520px]"
-          )}
-          aria-hidden="true"
-        />
-        <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
-      </>
-    ) : (
+  const content = (
+    <>
       <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
-    );
-
-  return (
-    <Link href={href} className={cx(base, styles[variant])}>
-      {overlays}
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/10 blur-2xl"
+        aria-hidden="true"
+      />
       <div className="relative z-[2] flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <IconBadge icon={icon} tone={variant === "primary" ? "blue" : "slate"} />
+          <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+            {icon}
+          </div>
           <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-white/95">{title}</div>
+            <div className="text-[14px] font-semibold text-white/95">{title}</div>
+            {badge ? (
+              <div className="mt-1 inline-flex rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                {badge}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-white/45">→</div>
       </div>
+    </>
+  );
+
+  if (disabled || !href) {
+    return <div className={cx(base, cls)} aria-disabled>{content}</div>;
+  }
+
+  return (
+    <Link href={href} className={cx(base, cls)}>
+      {content}
     </Link>
   );
 }
 
-function TileButton({
-  title,
-  icon,
-  onClick,
-  locked,
-}: {
-  title: string;
-  icon: string;
-  onClick: () => void;
-  locked?: boolean;
-}) {
+function Medal({ place }: { place: number }) {
+  if (place === 1) return <span aria-hidden="true">🥇</span>;
+  if (place === 2) return <span aria-hidden="true">🥈</span>;
+  if (place === 3) return <span aria-hidden="true">🥉</span>;
+  return <span className="text-white/55" aria-hidden="true">#{place}</span>;
+}
+
+function PlaceBadge({ place }: { place: number }) {
+  const isTop = place <= 3;
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cx(
-        "group relative overflow-hidden w-full rounded-3xl border border-white/12 bg-white/6 px-4 py-4 text-left transition touch-manipulation",
-        "hover:border-white/22 hover:bg-white/10 hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]",
-        "active:scale-[0.98] active:opacity-95",
-        locked ? "opacity-95" : ""
+        "grid h-10 w-10 place-items-center rounded-2xl border text-[13px] font-extrabold",
+        isTop
+          ? "border-blue-300/25 bg-blue-500/12 text-white"
+          : "border-white/12 bg-white/5 text-white/80"
       )}
+      aria-label={`Place ${place}`}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
-
-      {locked ? (
-        <>
-          <div className="pointer-events-none absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]" aria-hidden="true" />
-          <div
-            className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1 text-[11px] font-semibold text-rose-100"
-            aria-hidden="true"
-          >
-            🔒 Locked
-          </div>
-        </>
-      ) : null}
-
-      <div
-        className={cx(
-          "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl",
-          locked ? "bg-rose-500/10" : "bg-blue-500/10"
-        )}
-        aria-hidden="true"
-      />
-
-      <div
-        className={cx(
-          "pointer-events-none absolute -left-32 top-0 h-full w-32 rotate-[20deg]",
-          "bg-gradient-to-r from-transparent via-white/10 to-transparent blur-xl",
-          "transition-transform duration-700 ease-out",
-          "group-hover:translate-x-[520px]"
-        )}
-        aria-hidden="true"
-      />
-
-      <div className="relative z-[2] flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <IconBadge icon={icon} tone={locked ? "rose" : "slate"} />
-          <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-white/95">{title}</div>
-          </div>
-        </div>
-        <div className="shrink-0 text-white/45">→</div>
-      </div>
-    </button>
+      <Medal place={place} />
+    </div>
   );
 }
 
-export default function HomePage() {
-  const router = useRouter();
+export default function LeaderboardPage() {
+  const [mode, setMode] = useState<Mode>("word");
+  const [scope, setScope] = useState<Scope>("world");
 
-  const [screen, setScreen] = useState<Screen>("welcome");
-
-  const [user, setUser] = useState<null | { id: string; email?: string | null }>(null);
+  const [region, setRegion] = useState<string>("HR");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
+  const title = useMemo(() => {
+    const m = mode === "word" ? "Word Quick" : "Photo Quick";
+    const s = scope === "world" ? "World" : `Region (${region || "—"})`;
+    return `${m} • ${s} • Top 100`;
+  }, [mode, scope, region]);
 
-  // 1) Učitaj session + slušaj promjene
-  useEffect(() => {
-    let alive = true;
+  const fetchBoard = async () => {
+    setLoading(true);
+    setMsg(null);
 
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      const u = data.session?.user ?? null;
-      setUser(u ? { id: u.id, email: u.email } : null);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user ?? null;
-      setUser(u ? { id: u.id, email: u.email } : null);
+    const { data, error } = await supabase.rpc("get_leaderboard", {
+      p_mode: mode,
+      p_scope: scope,
+      p_region: scope === "region" ? region : null,
+      p_limit: 100,
     });
 
-    return () => {
-      alive = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  // 2) čim ima user, prebaci na MENU
-  useEffect(() => {
-    if (user) {
-      setScreen("menu");
-      setMsg(null);
-    }
-  }, [user]);
-
-  // fetch my rank/points
-  useEffect(() => {
-    let alive = true;
-
-    async function loadMyStatus() {
-      if (!user) {
-        setMyStatus(null);
-        return;
-      }
-
-      const res = await supabase.rpc("get_my_status");
-      if (!alive) return;
-
-      if (res.error) {
-        setMyStatus({ ok: false, error: res.error.message });
-        return;
-      }
-
-      setMyStatus(res.data as MyStatus);
-    }
-
-    loadMyStatus();
-    const t = setInterval(loadMyStatus, 15000);
-
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [user]);
-
-  const modeLabel = useMemo(() => {
-    if (user) return "Ranked (account)";
-    return "Guest (unranked)";
-  }, [user]);
-
-  const startGuest = () => {
-    setMsg(null);
-    setScreen("menu");
-  };
-
-  const logout = async () => {
-    await supabase.auth.signOut();
-    router.refresh();
-    setScreen("welcome");
-    setMsg(null);
-    setMyStatus(null);
-  };
-
-  const openPhoto = () => {
-    if (!user) {
-      setMsg("Photo Quick is only playable when you are logged in / registered.");
+    if (error) {
+      setMsg(error.message);
+      setRows([]);
+      setLoading(false);
       return;
     }
-    router.push("/quick-photo");
+
+    setRows((data ?? []) as Row[]);
+    setLoading(false);
   };
 
-  const myOk = myStatus && myStatus.ok === true ? myStatus : null;
-
-  // header name: prefer nickname from status; fallback to email/guest
-  const headerName = useMemo(() => {
-    if (!user) return "Guest";
-    if (myOk?.nickname) return myOk.nickname;
-    return user.email ? String(user.email).split("@")[0] : "Player";
-  }, [user, myOk?.nickname, user?.email]);
+  useEffect(() => {
+    fetchBoard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, scope, region]);
 
   return (
     <main
-      className="min-h-[100svh] w-full bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      className={cx(
+        "min-h-[100svh] w-full",
+        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+      )}
       style={{
         paddingTop: "max(env(safe-area-inset-top), 18px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* HEADER (compact, no duplicated options) */}
         <header className="pt-2">
-          <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/70">
-              <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_16px_rgba(59,130,246,0.95)]" />
-              Global speed challenges
-            </div>
+          <TopBar title="Leaderboard" />
 
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold text-blue-200">
-              {modeLabel}
+          {/* Header card */}
+          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-white/85">Leaderboard</div>
+                <div className="mt-1 text-[12px] text-white/65">{title}</div>
+              </div>
+              <div className="shrink-0 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75">
+                🏁 Top 100
+              </div>
             </div>
           </div>
 
-          <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-start justify-between gap-3">
-              {/* left: identity */}
-              <div className="min-w-0">
-                <div className="text-[11px] text-white/55">Profile</div>
-                <div className="mt-0.5 truncate text-[18px] font-extrabold tracking-tight text-white/95">
-                  {headerName}
+          {/* QUICK MODE */}
+          <div className="mt-4 space-y-2">
+            <SectionLabel icon="⚡" label="Quick Mode" right="Pick one" />
+            <Segmented
+              value={mode}
+              onChange={(v) => setMode(v as Mode)}
+              options={[
+                { value: "word", label: "Word Quick", icon: "⌨️" },
+                { value: "photo", label: "Photo Quick", icon: "📸" },
+              ]}
+            />
+          </div>
+
+          {/* SCOPE */}
+          <div className="mt-3 space-y-2">
+            <SectionLabel icon="🌍" label="Scope" right={scope === "world" ? "World" : "Region"} />
+            <Segmented
+              value={scope}
+              onChange={(v) => setScope(v as Scope)}
+              options={[
+                { value: "world", label: "World", icon: "🌍" },
+                { value: "region", label: "Region", icon: "🗺️" },
+              ]}
+            />
+
+            {scope === "region" ? (
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[12px] font-semibold text-white/85">Region code</div>
+                  <div className="text-[11px] text-white/45">ISO (HR, DE, US)</div>
                 </div>
 
-                {user ? (
-                  myOk ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <StatPill icon="🌍" label={`Rank #${myOk.world_rank ?? "—"}`} />
-                      <StatPill icon="⚡" label={`${myOk.total_points} points`} />
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-[11px] text-white/55">Loading rank…</div>
-                  )
-                ) : (
-                  <div className="mt-2 text-[11px] text-white/55">
-                    Login to play ranked and unlock Photo Quick.
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                    🏳️
                   </div>
-                )}
-              </div>
-
-              {/* right: small logo only (no big Quick title) */}
-              <div className="shrink-0">
-                <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/12 bg-white/6">
-                  <Image
-                    src="/quick-logo.png"
-                    alt="Quick"
-                    width={48}
-                    height={48}
-                    priority
-                    className="h-12 w-12"
+                  <input
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value.toUpperCase())}
+                    placeholder="HR"
+                    className="w-full rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none focus:border-white/25 focus:bg-slate-950/55"
                   />
                 </div>
               </div>
+            ) : null}
+          </div>
+
+          {/* EXTRA (as requested) */}
+          <div className="mt-4 space-y-2">
+            <SectionLabel icon="🧩" label="More" right="Coming soon + shortcuts" />
+            <div className="grid grid-cols-2 gap-3">
+              <NavTile title="Create own" icon="👥" disabled badge="Coming soon" />
+              <NavTile title="Tournament" icon="🏟️" disabled badge="Coming soon" />
+              <NavTile title="Leaderboard" icon="🏆" disabled badge="You are here" />
+              <NavTile title="Settings" icon="⚙️" href="/settings" />
             </div>
           </div>
+
+          {/* Refresh */}
+          <button
+            onClick={fetchBoard}
+            className={cx(
+              "group relative overflow-hidden mt-4 w-full rounded-3xl border border-blue-300/25",
+              "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
+              "px-5 py-4 text-left transition touch-manipulation",
+              "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
+              "active:scale-[0.98]"
+            )}
+          >
+            <div
+              className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/16 blur-2xl"
+              aria-hidden="true"
+            />
+            <div
+              className={cx(
+                "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
+                "bg-gradient-to-r from-transparent via-white/14 to-transparent blur-xl",
+                "transition-transform duration-700 ease-out",
+                "group-hover:translate-x-[520px]"
+              )}
+              aria-hidden="true"
+            />
+            <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+
+            <div className="relative z-[2] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
+                  🔄
+                </div>
+                <div>
+                  <div className="text-[15px] font-semibold">Refresh</div>
+                  <div className="mt-1 text-[11px] text-white/65">Reload current top 100</div>
+                </div>
+              </div>
+              <div className="text-white/55">→</div>
+            </div>
+          </button>
         </header>
 
-        {/* CONTENT */}
-        <section className="mt-5 space-y-3">
-          {screen === "welcome" ? (
-            <>
-              <Link
-                href="/auth?mode=login"
-                className={cx(
-                  "group relative overflow-hidden block w-full rounded-3xl border border-blue-300/25",
-                  "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
-                  "px-4 py-4 text-left transition touch-manipulation",
-                  "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.30)]",
-                  "active:scale-[0.98] active:opacity-95 focus:outline-none focus:ring-2 focus:ring-blue-400/60"
-                )}
-              >
-                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/18 blur-2xl" aria-hidden="true" />
-                <div
-                  className={cx(
-                    "pointer-events-none absolute -left-40 top-0 h-full w-40 rotate-[20deg]",
-                    "bg-gradient-to-r from-transparent via-white/14 to-transparent blur-xl",
-                    "transition-transform duration-700 ease-out",
-                    "group-hover:translate-x-[520px]"
-                  )}
-                  aria-hidden="true"
-                />
-                <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
-
-                <div className="relative z-[2] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <IconBadge icon="🔐" tone="blue" />
-                    <div className="text-[15px] font-semibold text-white/95">Login</div>
-                  </div>
-                  <div className="text-white/45">→</div>
+        {/* List */}
+        <section className="mt-5 space-y-2">
+          {loading ? (
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                  ⏳
                 </div>
-              </Link>
-
-              <Link
-                href="/auth?mode=register"
-                className={cx(
-                  "group relative overflow-hidden block w-full rounded-3xl border border-white/12 bg-white/6",
-                  "px-4 py-4 text-left transition touch-manipulation",
-                  "hover:-translate-y-[1px] hover:border-white/22 hover:bg-white/10 hover:shadow-[0_0_34px_rgba(59,130,246,0.14)]",
-                  "active:scale-[0.98] active:opacity-95 focus:outline-none focus:ring-2 focus:ring-blue-400/60"
-                )}
-              >
-                <div
-                  className={cx(
-                    "pointer-events-none absolute -left-32 top-0 h-full w-32 rotate-[20deg]",
-                    "bg-gradient-to-r from-transparent via-white/10 to-transparent blur-xl",
-                    "transition-transform duration-700 ease-out",
-                    "group-hover:translate-x-[520px]"
-                  )}
-                  aria-hidden="true"
-                />
-                <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/5" aria-hidden="true" />
-
-                <div className="relative z-[2] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <IconBadge icon="✨" tone="slate" />
-                    <div className="text-[15px] font-semibold text-white/95">Register</div>
-                  </div>
-                  <div className="text-white/45">→</div>
-                </div>
-              </Link>
-
-              {/*
-              // Guest mode hidden (keep as-is)
-              <button onClick={startGuest} ...>Play as Guest</button>
-              */}
-
-              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
-                <div className="flex items-center gap-3">
-                  <IconBadge icon="🧠" tone="blue" size="sm" />
-                  <div className="text-[12px] text-white/75">
-                    Word Quick = type fast. Photo Quick = snap & vote (account only).
-                  </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-white/85">Loading</div>
+                  <div className="text-[11px] text-white/55">Fetching leaderboard…</div>
                 </div>
               </div>
-            </>
+            </div>
+          ) : msg ? (
+            <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-white/85">
+              <div className="flex items-start gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-rose-300/20 bg-rose-500/10 text-[16px]">
+                  ⚠️
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold">Error</div>
+                  <div className="mt-1 text-[12px] text-white/80">{msg}</div>
+                </div>
+              </div>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                  💤
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-white/85">No data yet</div>
+                  <div className="text-[11px] text-white/55">Try refresh in a moment.</div>
+                </div>
+              </div>
+            </div>
           ) : (
-            <>
-              {/* no "Choose mode" text; simple section label */}
-              <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold uppercase tracking-wider text-white/45">
-                  Home
-                </div>
-                <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/65">
-                  Tap to open
-                </div>
-              </div>
+            rows.map((r) => {
+              const isTop = r.place <= 3;
 
-              <div className="grid grid-cols-2 gap-3">
-                <TileLink href="/quick-word" title="Word Quick" icon="⌨️" variant="primary" />
-
-                {user ? (
-                  <TileButton title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} />
-                ) : (
-                  <TileButton title="Photo Quick" icon="📸" onClick={openPhoto} locked />
-                )}
-
-                <TileLink href="/leaderboard" title="Leaderboard" icon="🏆" variant="secondary" />
-                <TileLink href="/settings" title="Settings" icon="⚙️" variant="ghost" />
-              </div>
-
-              {user ? (
-                <button
-                  onClick={logout}
-                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+              return (
+                <div
+                  key={r.user_id}
+                  className={cx(
+                    "rounded-3xl border p-4",
+                    isTop ? "border-blue-300/20 bg-blue-500/10" : "border-white/12 bg-white/6"
+                  )}
                 >
-                  Logout
-                </button>
-              ) : (
-                <button
-                  className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-5 py-3 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
-                  onClick={() => {
-                    setScreen("welcome");
-                    setMsg(null);
-                  }}
-                >
-                  ← Back
-                </button>
-              )}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <PlaceBadge place={r.place} />
 
-              {msg ? (
-                <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-[12px] leading-relaxed text-white/90">
-                  <div className="flex items-start gap-3">
-                    <IconBadge icon="⚠️" tone="rose" size="sm" />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold">Action required</div>
-                      <div className="mt-1 text-white/80">{msg}</div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="truncate text-[14px] font-semibold text-white/95">
+                            {r.username}
+                          </div>
+                          <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                            {r.country_code}
+                          </span>
+                        </div>
 
-                      <div className="mt-3 flex gap-2">
-                        <Link
-                          href="/auth?mode=login"
-                          className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/85 transition hover:bg-white/10 active:scale-[0.98]"
-                        >
-                          Login
-                        </Link>
-                        <Link
-                          href="/auth?mode=register"
-                          className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/85 transition hover:bg-white/10 active:scale-[0.98]"
-                        >
-                          Register
-                        </Link>
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75">
+                            🏷️ {getRank(r.points_total)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <div className="text-[11px] text-white/55">Points</div>
+                      <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
+                        <span className="text-[14px]">⚡</span>
+                        <span className="text-[16px] font-extrabold">{r.points_total}</span>
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : null}
-            </>
+              );
+            })
           )}
         </section>
 
-        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
-          Quick © {new Date().getFullYear()}
+        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
+          Quick • Leaderboard
         </footer>
       </div>
     </main>
