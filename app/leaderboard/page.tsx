@@ -5,16 +5,26 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { getRank } from "../../lib/rank";
 
-type Mode = "word" | "photo";
+type Mode = "word" | "photo" | "hidden";
 type Scope = "world" | "region";
 
-type Row = {
+type RowBase = {
   place: number;
   user_id: string;
   username: string;
-  country_code: string;
+  country_code?: string; // hidden may not have it
+};
+
+type RowWP = RowBase & {
   points_total: number;
 };
+
+type RowHidden = RowBase & {
+  best_score: number;
+  best_words_count: number;
+};
+
+type Row = RowWP | RowHidden;
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -46,7 +56,10 @@ function Segmented({
 }) {
   return (
     <div className="rounded-3xl border border-white/12 bg-white/6 p-1">
-      <div className="grid grid-cols-2 gap-1">
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      >
         {options.map((o) => {
           const active = value === o.value;
           return (
@@ -125,9 +138,20 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // If user switches to Hidden, force scope=world (since we don't have hidden region yet)
+  useEffect(() => {
+    if (mode === "hidden" && scope !== "world") setScope("world");
+  }, [mode, scope]);
+
   const title = useMemo(() => {
-    const m = mode === "word" ? "Word Quick" : "Photo Quick";
-    const s = scope === "world" ? "World" : `Region (${region || "—"})`;
+    const m =
+      mode === "word" ? "Word Quick" : mode === "photo" ? "Photo Quick" : "Hidden Word";
+    const s =
+      mode === "hidden"
+        ? "World"
+        : scope === "world"
+        ? "World"
+        : `Region (${region || "—"})`;
     return `${m} • ${s} • Top 100`;
   }, [mode, scope, region]);
 
@@ -135,6 +159,34 @@ export default function LeaderboardPage() {
     setLoading(true);
     setMsg(null);
 
+    // Hidden Word uses view directly (no RPC, so we don't break existing logic)
+    if (mode === "hidden") {
+      const { data, error } = await supabase
+        .from("v_hidden_word_leaderboard_top100")
+        .select("user_id, username, best_score, best_words_count")
+        .limit(100);
+
+      if (error) {
+        setMsg(error.message);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const mapped: RowHidden[] = (data ?? []).map((r: any, idx: number) => ({
+        place: idx + 1,
+        user_id: String(r.user_id),
+        username: String(r.username ?? "Player"),
+        best_score: Number(r.best_score ?? 0),
+        best_words_count: Number(r.best_words_count ?? 0),
+      }));
+
+      setRows(mapped);
+      setLoading(false);
+      return;
+    }
+
+    // Word/Photo stay exactly as-is via your RPC
     const { data, error } = await supabase.rpc("get_leaderboard", {
       p_mode: mode,
       p_scope: scope,
@@ -149,7 +201,7 @@ export default function LeaderboardPage() {
       return;
     }
 
-    setRows((data ?? []) as Row[]);
+    setRows((data ?? []) as RowWP[]);
     setLoading(false);
   };
 
@@ -157,6 +209,8 @@ export default function LeaderboardPage() {
     fetchBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, scope, region]);
+
+  const isHidden = mode === "hidden";
 
   return (
     <main
@@ -195,6 +249,7 @@ export default function LeaderboardPage() {
               options={[
                 { value: "word", label: "Word", icon: "⌨️" },
                 { value: "photo", label: "Photo", icon: "📸" },
+                { value: "hidden", label: "Hidden", icon: "🧩" },
               ]}
             />
 
@@ -207,7 +262,8 @@ export default function LeaderboardPage() {
               ]}
             />
 
-            {scope === "region" ? (
+            {/* Region input only for Word/Photo */}
+            {scope === "region" && !isHidden ? (
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[12px] font-semibold text-white/85">Region code</div>
@@ -225,6 +281,13 @@ export default function LeaderboardPage() {
                     className="w-full rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none focus:border-white/25 focus:bg-slate-950/55"
                   />
                 </div>
+              </div>
+            ) : null}
+
+            {/* Small note when Hidden + Region */}
+            {isHidden && scope === "region" ? (
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-[12px] text-white/70">
+                Hidden Word currently supports <b>World</b> leaderboard only.
               </div>
             ) : null}
 
@@ -251,7 +314,10 @@ export default function LeaderboardPage() {
                 )}
                 aria-hidden="true"
               />
-              <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
+              <div
+                className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6"
+                aria-hidden="true"
+              />
 
               <div className="relative z-[2] flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -310,15 +376,14 @@ export default function LeaderboardPage() {
           ) : (
             rows.map((r) => {
               const isTop = r.place <= 3;
+              const isHiddenRow = "best_score" in r;
 
               return (
                 <div
                   key={r.user_id}
                   className={cx(
                     "rounded-3xl border p-4",
-                    isTop
-                      ? "border-blue-300/20 bg-blue-500/10"
-                      : "border-white/12 bg-white/6"
+                    isTop ? "border-blue-300/20 bg-blue-500/10" : "border-white/12 bg-white/6"
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -330,24 +395,45 @@ export default function LeaderboardPage() {
                           <div className="truncate text-[14px] font-semibold text-white/95">
                             {r.username}
                           </div>
-                          <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
-                            {r.country_code}
-                          </span>
+
+                          {/* country chip only if present */}
+                          {"country_code" in r && r.country_code ? (
+                            <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                              {r.country_code}
+                            </span>
+                          ) : null}
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
-                            🏷️ {getRank(r.points_total)}
-                          </span>
-                        </div>
+                        {/* Rank chip only for Word/Photo */}
+                        {!isHiddenRow ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                              🏷️ {getRank((r as RowWP).points_total)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                              🧩 Hidden Word
+                            </span>
+                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                              🔤 {(r as RowHidden).best_words_count} words
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="shrink-0 text-right">
-                      <div className="text-[11px] text-white/55">Points</div>
+                      <div className="text-[11px] text-white/55">
+                        {isHiddenRow ? "Score" : "Points"}
+                      </div>
+
                       <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
-                        <span className="text-[14px]">⚡</span>
-                        <span className="text-[16px] font-extrabold">{r.points_total}</span>
+                        <span className="text-[14px]">{isHiddenRow ? "🧩" : "⚡"}</span>
+                        <span className="text-[16px] font-extrabold">
+                          {isHiddenRow ? (r as RowHidden).best_score : (r as RowWP).points_total}
+                        </span>
                       </div>
                     </div>
                   </div>
