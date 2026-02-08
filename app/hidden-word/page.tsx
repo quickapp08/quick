@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
 type Phase = "setup" | "playing" | "done";
+type FlashTone = "ok" | "bad" | "info";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -102,6 +103,20 @@ function shuffleArrayDeterministic<T>(arr: T[], seedKey: string) {
   return a;
 }
 
+type Tile = {
+  id: string;
+  ch: string; // uppercase letter
+};
+
+function makeTiles(letters: string, seedKey: string): Tile[] {
+  const arr = letters.toUpperCase().split("");
+  const shuffled = shuffleArrayDeterministic(arr, `tiles:${seedKey}`);
+  return shuffled.map((ch, idx) => ({
+    id: `${seedKey}:${idx}:${ch}`,
+    ch,
+  }));
+}
+
 export default function HiddenWordPage() {
   const router = useRouter();
 
@@ -189,23 +204,28 @@ export default function HiddenWordPage() {
   const [roundKey, setRoundKey] = useState("");
   const [startMs, setStartMs] = useState(0);
 
-  const [letters, setLetters] = useState(""); // stored as string for DB
+  const [letters, setLetters] = useState(""); // stored for DB
   const lettersMap = useMemo(() => countLetters(letters), [letters]);
 
-  const tiles = useMemo(() => {
-    if (!letters) return [];
-    // tiles are shuffled, so you don't see obvious chunks like "EAST"
-    return shuffleArrayDeterministic(letters.toUpperCase().split(""), `tiles:${roundKey || letters}`);
-  }, [letters, roundKey]);
+  const [tiles, setTiles] = useState<Tile[]>([]);
 
-  const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  // selection state (tap letters)
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedWord = useMemo(() => {
+    const map = new Map(tiles.map((t) => [t.id, t.ch] as const));
+    return selectedIds.map((id) => map.get(id) ?? "").join("");
+  }, [selectedIds, tiles]);
 
+  // Found + scoring
   const [found, setFound] = useState<string[]>([]);
   const foundSet = useMemo(() => new Set(found), [found]);
-
   const [score, setScore] = useState(0);
-  const [toast, setToast] = useState<{ title: string; sub?: string } | null>(null);
+
+  // Feedback coloring for the whole selection after Send
+  const [lockTone, setLockTone] = useState<null | "ok" | "bad">(null);
+  const clearLockTimerRef = useRef<number | null>(null);
+
+  const [toast, setToast] = useState<{ tone: FlashTone; title: string; sub?: string } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -217,36 +237,48 @@ export default function HiddenWordPage() {
 
   const timeLabel = useMemo(() => msToClock(msLeft), [msLeft]);
 
-  const flash = (title: string, sub?: string) => {
-    setToast({ title, sub });
+  const flash = (tone: FlashTone, title: string, sub?: string) => {
+    setToast({ tone, title, sub });
     window.setTimeout(() => setToast(null), 900);
   };
 
-  // Generate letters (10–14) that guarantee >=10 dictionary words
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setLockTone(null);
+  };
+
+  const safeClearLockLater = () => {
+    if (clearLockTimerRef.current) window.clearTimeout(clearLockTimerRef.current);
+    clearLockTimerRef.current = window.setTimeout(() => {
+      setLockTone(null);
+      setSelectedIds([]);
+    }, 700);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (clearLockTimerRef.current) window.clearTimeout(clearLockTimerRef.current);
+    };
+  }, []);
+
+  // Generate letters (10–14) that guarantee >=10 dictionary words (best effort)
   const generateLettersGuaranteed = (seedKey: string) => {
-    if (!dict || dict.length < 80) return { letters: "", ok: false };
+    if (!dict || dict.length < 120) return { letters: "TABLESROCKET".toUpperCase(), ok: false };
 
     const rand = mulberry32(hashToUint32(seedKey));
-
-    // prefer mid-length words for better overlap, ignore very rare weird long ones
     const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
     const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "table";
 
-    for (let attempt = 0; attempt < 250; attempt++) {
-      // pick 10 base words
+    for (let attempt = 0; attempt < 300; attempt++) {
       const base: string[] = [];
       while (base.length < 10) {
         const w = pick();
         if (!base.includes(w)) base.push(w);
       }
 
-      let L = unionLettersForWords(base);
+      const L = unionLettersForWords(base);
+      if (L.length < 10 || L.length > 14) continue;
 
-      // Ensure 10–14
-      if (L.length < 10) continue;
-      if (L.length > 14) continue;
-
-      // Build count
       const map = countLetters(L);
       const possible = candidates
         .filter((w) => w.len >= 2 && w.len <= 10)
@@ -254,10 +286,7 @@ export default function HiddenWordPage() {
         .filter((w) => canBuild(w, map));
 
       const uniquePossible = Array.from(new Set(possible));
-      if (uniquePossible.length >= 10) {
-        // IMPORTANT: store letters, but they will be displayed as shuffled tiles
-        return { letters: L.toUpperCase(), ok: true };
-      }
+      if (uniquePossible.length >= 10) return { letters: L.toUpperCase(), ok: true };
     }
 
     return { letters: "TABLESROCKET".toUpperCase(), ok: false };
@@ -265,7 +294,7 @@ export default function HiddenWordPage() {
 
   const startRound = () => {
     if (!dict || !dictSet) {
-      flash("Loading…", "Words are still syncing");
+      flash("info", "Loading…", "Dictionary is still syncing");
       return;
     }
 
@@ -274,10 +303,11 @@ export default function HiddenWordPage() {
 
     const gen = generateLettersGuaranteed(key);
     setLetters(gen.letters);
+    setTiles(makeTiles(gen.letters, key));
 
     setFound([]);
     setScore(0);
-    setInput("");
+    clearSelection();
     setToast(null);
     setSaveMsg(null);
     setSaving(false);
@@ -286,7 +316,7 @@ export default function HiddenWordPage() {
     setStartMs(t0);
     setPhase("playing");
 
-    setTimeout(() => inputRef.current?.focus(), 0);
+    if (!gen.ok) flash("info", "Quick tip", "Add more words to dictionary for richer rounds.");
   };
 
   const endRound = async () => {
@@ -321,63 +351,103 @@ export default function HiddenWordPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msLeft, phase]);
 
-  const submitWord = () => {
+  const onTapTile = (id: string) => {
+    if (phase !== "playing") return;
+    if (lockTone) return; // locked while showing ok/bad
+
+    setSelectedIds((prev) => {
+      // allow selecting same tile only once (id is unique)
+      if (prev.includes(id)) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const onBackspace = () => {
+    if (phase !== "playing") return;
+    if (lockTone) return;
+    setSelectedIds((prev) => prev.slice(0, -1));
+  };
+
+  const onClear = () => {
+    if (phase !== "playing") return;
+    if (lockTone) return;
+    clearSelection();
+  };
+
+  const submitSelected = () => {
     if (phase !== "playing") return;
     if (!dictSet) return;
+    if (lockTone) return;
 
-    const raw = input.trim().toLowerCase();
-    const word = raw.replace(/[^a-z]/g, "");
-    if (!word) return;
-
-    if (word.length < 2) {
-      flash("Too short");
+    const word = selectedWord.toLowerCase().replace(/[^a-z]/g, "");
+    if (!word || word.length < 2) {
+      flash("info", "Pick more letters");
       return;
     }
 
+    // fits letters? (should always be true because we pick tiles, but keep safe)
     if (!canBuild(word, lettersMap)) {
-      flash("Nope", "That doesn't fit these letters");
-      setInput("");
-      return;
-    }
-
-    if (!dictSet.has(word)) {
-      flash("Not counted", "Try another word");
-      setInput("");
+      setLockTone("bad");
+      flash("bad", "Nope", "Doesn't fit these letters");
+      safeClearLockLater();
       return;
     }
 
     if (foundSet.has(word)) {
-      flash("Already!", "You found that one");
-      setInput("");
+      setLockTone("bad");
+      flash("bad", "Already found");
+      safeClearLockLater();
+      return;
+    }
+
+    if (!dictSet.has(word)) {
+      setLockTone("bad");
+      flash("bad", "Not a word", "Try again");
+      safeClearLockLater();
       return;
     }
 
     const pts = pointsForLen(word.length);
     setFound((prev) => [word, ...prev]);
     setScore((s) => s + pts);
-    setInput("");
 
-    if (word.length >= 6) flash("Fantastic!", `+${pts} pts`);
-    else flash("Bravo!", `+${pts} pts`);
-  };
+    setLockTone("ok");
+    if (word.length >= 6) flash("ok", "Fantastic!", `+${pts} pts`);
+    else flash("ok", "Bravo!", `+${pts} pts`);
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      submitWord();
-    }
+    safeClearLockLater();
   };
 
   const resetToSetup = () => {
     setPhase("setup");
     setLetters("");
+    setTiles([]);
     setRoundKey("");
     setFound([]);
     setScore(0);
-    setInput("");
-    setToast(null);
+    clearSelection();
     setSaving(false);
     setSaveMsg(null);
+  };
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const tileClass = (id: string) => {
+    const isSelected = selectedSet.has(id);
+
+    // if locked after send, paint selected tiles green/red
+    if (isSelected && lockTone === "ok") {
+      return "border-emerald-300/25 bg-emerald-500/18 text-white shadow-[0_0_30px_rgba(16,185,129,0.18)]";
+    }
+    if (isSelected && lockTone === "bad") {
+      return "border-rose-300/25 bg-rose-500/18 text-white shadow-[0_0_30px_rgba(244,63,94,0.18)]";
+    }
+
+    if (isSelected) {
+      return "border-blue-300/30 bg-blue-500/18 text-white shadow-[0_0_30px_rgba(59,130,246,0.18)]";
+    }
+
+    return "border-white/12 bg-white/5 text-white/90";
   };
 
   if (!authReady || !userId) {
@@ -424,9 +494,9 @@ export default function HiddenWordPage() {
               <h1 className="text-[24px] font-extrabold tracking-tight">Hidden Word</h1>
               <div className="mt-1 text-[12px] text-white/60">
                 {phase === "setup"
-                  ? "Find as many words as you can in 60 seconds."
+                  ? "Tap letters to form words — no keyboard."
                   : phase === "playing"
-                  ? "Type a word and hit Enter."
+                  ? "Tap letters, then press Send."
                   : "Round finished."}
               </div>
             </div>
@@ -456,8 +526,8 @@ export default function HiddenWordPage() {
           ) : null}
         </header>
 
-        {/* Sticky Letters + Score */}
-        <section className="mt-4 sticky top-[12px] z-10">
+        {/* Game Card */}
+        <section className="mt-4">
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_0_60px_rgba(59,130,246,0.10)] backdrop-blur-xl">
             <div className="flex items-center justify-between">
               <div className="text-[12px] text-white/65">Score</div>
@@ -469,16 +539,25 @@ export default function HiddenWordPage() {
             <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/25 p-3">
               <div className="text-[12px] text-white/55">Letters</div>
 
-              {/* Tiles */}
               <div className="mt-3 grid grid-cols-7 gap-2">
-                {(tiles.length ? tiles : Array.from({ length: 14 }, () => "•")).map((ch, i) => (
-                  <div
-                    key={`${ch}-${i}`}
-                    className="grid aspect-square place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px] font-extrabold text-white/90 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
-                  >
-                    {ch}
-                  </div>
-                ))}
+                {(tiles.length ? tiles : Array.from({ length: 14 }, (_, i) => ({ id: `p-${i}`, ch: "•" }))).map(
+                  (t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => onTapTile(t.id)}
+                      disabled={phase !== "playing" || !tiles.length || !!lockTone || selectedSet.has(t.id)}
+                      className={cx(
+                        "grid aspect-square place-items-center rounded-2xl border text-[16px] font-extrabold",
+                        "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition active:scale-[0.98] touch-manipulation",
+                        tileClass(t.id),
+                        (phase !== "playing" || !tiles.length) && "opacity-60",
+                        selectedSet.has(t.id) && !lockTone && "ring-1 ring-white/6"
+                      )}
+                    >
+                      {t.ch}
+                    </button>
+                  )
+                )}
               </div>
 
               <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
@@ -487,35 +566,116 @@ export default function HiddenWordPage() {
               </div>
             </div>
 
-            {phase === "setup" ? (
-              <div className="mt-3">
+            {/* Selected word display + controls */}
+            <div className="mt-3 rounded-[24px] border border-white/10 bg-white/5 p-3">
+              <div className="text-[12px] text-white/60">Your word</div>
+
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate rounded-2xl border border-white/10 bg-slate-950/25 px-4 py-3 text-[18px] font-extrabold tracking-[0.14em] text-white/90">
+                    {selectedWord || "—"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-white/45">
+                    Tap letters to build • Back removes last
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={onBackspace}
+                    disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
+                    className={cx(
+                      "rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85",
+                      "transition active:scale-[0.98] touch-manipulation",
+                      (!selectedIds.length || !!lockTone) && "opacity-50"
+                    )}
+                  >
+                    ⌫
+                  </button>
+                  <button
+                    onClick={onClear}
+                    disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
+                    className={cx(
+                      "rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85",
+                      "transition active:scale-[0.98] touch-manipulation",
+                      (!selectedIds.length || !!lockTone) && "opacity-50"
+                    )}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2">
                 <button
-                  onClick={startRound}
+                  onClick={submitSelected}
+                  disabled={phase !== "playing" || selectedIds.length < 2 || !!lockTone}
                   className={cx(
                     "w-full rounded-[24px] border border-blue-300/25",
                     "bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-4 text-left",
                     "transition hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
-                    "active:scale-[0.98] touch-manipulation"
+                    "active:scale-[0.98] touch-manipulation",
+                    (selectedIds.length < 2 || !!lockTone) && "opacity-60"
                   )}
-                  disabled={!dict || !dictSet}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-[14px] font-semibold">{dict ? "Start" : "Loading…"}</div>
+                      <div className="text-[14px] font-semibold">Send</div>
                       <div className="mt-1 text-[11px] text-white/65">
-                        Letters are generated to have plenty of valid words.
+                        {selectedIds.length < 2 ? "Pick at least 2 letters" : "Check word + score"}
                       </div>
                     </div>
                     <div className="text-white/55">→</div>
                   </div>
                 </button>
               </div>
-            ) : null}
+
+              {toast ? (
+                <div
+                  className={cx(
+                    "mt-3 rounded-2xl border p-3 text-[12px] text-white/90",
+                    toast.tone === "ok"
+                      ? "border-emerald-300/25 bg-emerald-500/12"
+                      : toast.tone === "bad"
+                      ? "border-rose-300/25 bg-rose-500/12"
+                      : "border-white/10 bg-white/5"
+                  )}
+                >
+                  <div className="font-semibold">{toast.title}</div>
+                  {toast.sub ? <div className="mt-0.5 text-white/70">{toast.sub}</div> : null}
+                </div>
+              ) : null}
+
+              {phase === "setup" ? (
+                <div className="mt-3">
+                  <button
+                    onClick={startRound}
+                    className={cx(
+                      "w-full rounded-[24px] border border-blue-300/25",
+                      "bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-4 text-left",
+                      "transition hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
+                      "active:scale-[0.98] touch-manipulation"
+                    )}
+                    disabled={!dict || !dictSet}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[14px] font-semibold">{dict ? "Start" : "Loading…"}</div>
+                        <div className="mt-1 text-[11px] text-white/65">
+                          Letters are generated to have plenty of valid words.
+                        </div>
+                      </div>
+                      <div className="text-white/55">→</div>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </section>
 
-        {/* Scroll area (found words) */}
-        <section className="mt-4 pb-40">
+        {/* Found words */}
+        <section className="mt-4 pb-6">
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="flex items-center justify-between">
               <div className="text-[14px] font-extrabold text-white/92">
@@ -562,62 +722,7 @@ export default function HiddenWordPage() {
           </div>
         </section>
 
-        {/* Bottom fixed input bar (keyboard-friendly) */}
-        {phase === "playing" ? (
-          <div
-            className="fixed left-0 right-0 bottom-0 z-20"
-            style={{
-              paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
-            }}
-          >
-            <div className="mx-auto max-w-md px-4">
-              <div className="rounded-[28px] border border-white/10 bg-slate-950/55 p-4 backdrop-blur-xl shadow-[0_-20px_60px_rgba(0,0,0,0.45)]">
-                <div className="flex items-end gap-3">
-                  <div className="min-w-0 w-full">
-                    <label className="block text-[12px] text-white/70">Type a word</label>
-                    <input
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={onKeyDown}
-                      placeholder="Enter a word…"
-                      className={cx(
-                        "mt-2 w-full rounded-2xl border px-4 py-3 text-[16px] outline-none focus:ring-2 focus:ring-blue-400/60",
-                        "border-white/12 bg-white/5 text-white placeholder:text-white/35"
-                      )}
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      inputMode="text"
-                    />
-                    <div className="mt-2 text-[11px] text-white/45">Speed matters. Keep going.</div>
-                  </div>
-
-                  <button
-                    onClick={submitWord}
-                    className={cx(
-                      "shrink-0 rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-3",
-                      "text-[14px] font-semibold transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)]",
-                      "active:scale-[0.98] touch-manipulation"
-                    )}
-                    style={{ minWidth: 110 }}
-                  >
-                    Add
-                  </button>
-                </div>
-
-                {toast ? (
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                    <div className="text-[12px] font-semibold text-white/90">{toast.title}</div>
-                    {toast.sub ? <div className="text-[11px] text-white/60">{toast.sub}</div> : null}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
+        <footer className="mt-auto pb-2 pt-4 text-center text-[11px] text-white/35">
           Quick • Hidden Word
         </footer>
       </div>
