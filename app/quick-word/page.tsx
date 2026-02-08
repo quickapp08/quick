@@ -24,12 +24,18 @@ function TopBar({ title }: { title: string }) {
     <div className="flex items-center justify-between">
       <Link
         href="/"
-        className="rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        className={cx(
+          "rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[13px] font-semibold text-white/80",
+          "shadow-[0_14px_40px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
+          "hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        )}
       >
         ← Back
       </Link>
+
       <div className="text-[13px] font-semibold text-white/85">{title}</div>
-      <div className="w-[64px]" />
+
+      <div className="w-[72px]" />
     </div>
   );
 }
@@ -47,7 +53,6 @@ function floorToIntervalStartMs(nowMs: number, intervalMin: number, offsetMs: nu
   const shifted = nowMs - offsetMs;
   return Math.floor(shifted / intervalMs) * intervalMs + offsetMs;
 }
-
 function nextDropMs(nowMs: number, intervalMin: number, offsetMs: number) {
   const intervalMs = intervalMin * 60 * 1000;
   const shifted = nowMs - offsetMs;
@@ -153,6 +158,129 @@ type AttemptStore = {
 function attemptKey(userId: string, interval: IntervalMin, roundStartMs: number) {
   return `qw_attempt_v1:${userId}:${interval}:${roundStartMs}`;
 }
+
+/* -------------------- UI atoms (visual only) -------------------- */
+
+function GlassCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "rounded-[26px] border border-white/10 bg-white/[0.06]",
+        "shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Pill({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "ready" | "live";
+}) {
+  const cls =
+    tone === "ready"
+      ? "border-blue-300/20 bg-blue-500/18 text-blue-100"
+      : tone === "live"
+      ? "border-emerald-400/20 bg-emerald-500/14 text-emerald-50"
+      : "border-white/10 bg-white/5 text-white/80";
+
+  return (
+    <span className={cx("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold", cls)}>
+      {children}
+    </span>
+  );
+}
+
+function RightCapsule({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid gap-2">
+      <div className="ml-auto">
+        <Pill tone="ready">⚡ READY</Pill>
+      </div>
+
+      <div className="ml-auto w-[110px] rounded-[22px] border border-white/10 bg-white/5 p-3 shadow-[0_18px_55px_rgba(0,0,0,0.35)] backdrop-blur-[10px]">
+        <div className="text-[11px] font-semibold text-white/55">{label}</div>
+        <div className="mt-1 text-[22px] font-extrabold tracking-tight text-white/95 leading-none">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectCard({
+  title,
+  subtitle,
+  selected,
+  onClick,
+  icon,
+  rightBadge,
+}: {
+  title: string;
+  subtitle: string;
+  selected: boolean;
+  onClick: () => void;
+  icon: string;
+  rightBadge: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "w-full rounded-[24px] border px-4 py-4 text-left transition touch-manipulation",
+        "shadow-[0_18px_52px_rgba(0,0,0,0.40)] backdrop-blur-[12px]",
+        selected
+          ? "border-blue-300/22 bg-gradient-to-b from-blue-500/20 to-white/5"
+          : "border-white/10 bg-white/5 hover:bg-white/7",
+        "active:scale-[0.98]"
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_12px_34px_rgba(0,0,0,0.35)]">
+            <span className="text-[18px] leading-none">{icon}</span>
+          </div>
+
+          <div className="min-w-0">
+            <div className="text-[15px] font-extrabold tracking-tight text-white/95">{title}</div>
+            <div className={cx("mt-1 text-[12px]", selected ? "text-white/65" : "text-white/55")}>
+              {subtitle}
+            </div>
+          </div>
+        </div>
+
+        <span
+          className={cx(
+            "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
+            selected ? "border-blue-300/22 bg-blue-500/16 text-blue-100" : "border-white/10 bg-white/5 text-white/65"
+          )}
+        >
+          {rightBadge}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+/* -------------------- Page (logic unchanged) -------------------- */
 
 export default function QuickWordPage() {
   const router = useRouter();
@@ -532,222 +660,243 @@ export default function QuickWordPage() {
         <header className="pt-2">
           <TopBar title="Word Quick" />
 
-          <div className="mt-4 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-[22px] font-bold tracking-tight">Word Quick</h1>
-              <div className="mt-1 text-[12px] text-white/60">
-                {activeWindow ? "LIVE window" : "Waiting"} •{" "}
-                <span className="text-white/75">{headerRight}</span>
+          {/* HERO card like screenshot */}
+          <GlassCard className="mt-4 overflow-hidden">
+            <div className="relative p-5">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent" />
+              <div className="pointer-events-none absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-500/10 blur-[70px]" />
+              <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-blue-500/12 blur-[80px]" />
+
+              <div className="relative z-[2] flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-white/65">Game mode</div>
+                  <div className="mt-1 text-[22px] font-extrabold tracking-tight text-white/95 leading-tight">
+                    Word Quick
+                  </div>
+                  <div className="mt-2 text-[12px] text-white/60">
+                    {activeWindow ? "Pick fast → answer instantly." : "Waiting → start automatically."} •{" "}
+                    <span className="text-white/75">{headerRight}</span>
+                  </div>
+
+                  {/* optional small debug line (kept but visually subtle) */}
+                  <div className="mt-2 text-[10px] text-white/35">Round key: {activeRoundKey}</div>
+                </div>
+
+                <RightCapsule label="Time" value={timeLabel} />
               </div>
-              <div className="mt-1 text-[11px] text-white/45">
-                Round key: {activeRoundKey}
+
+              <div className="mt-4 flex items-center gap-2">
+                <Pill tone={activeWindow ? "live" : "neutral"}>{activeWindow ? "● LIVE" : "SOON"}</Pill>
+                <Pill>{locked ? "1 attempt used" : "1 attempt"}</Pill>
+                <Pill>⏱ 2 min window</Pill>
               </div>
             </div>
-
-            <div className="flex flex-col items-end gap-2">
-              <div
-                className={cx(
-                  "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                  activeWindow ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100" : "border-blue-300/25 bg-blue-500/10 text-blue-100"
-                )}
-              >
-                {activeWindow ? "LIVE" : "SOON"}
-              </div>
-
-              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
-                ⏱ {timeLabel}
-              </div>
-            </div>
-          </div>
+          </GlassCard>
         </header>
 
-        {/* Main (everything up top) */}
+        {/* Main */}
         <section className="mt-4 space-y-3">
-          {/* Scramble card */}
-          <div
-            className={cx(
-              "rounded-[22px] border p-4 backdrop-blur-xl",
-              activeWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-[12px] text-white/70">
-                {activeWindow ? `2 min window • ${activeInterval} min` : `Next drop • ${nextDrop.interval} min`}
-              </div>
-              <div className={cx("text-[11px] font-semibold", locked ? "text-rose-100" : "text-white/80")}>
-                {locked ? "Locked (1 attempt used)" : "1 attempt"}
-              </div>
-            </div>
-
-            <div className="mt-3">
-              {activeWindow ? (
-                <div className="select-none text-[42px] font-extrabold leading-none tracking-tight">
-                  {scrambled || "…"}
+          {/* Word card */}
+          <GlassCard className={cx("overflow-hidden", activeWindow ? "border-emerald-400/14" : undefined)}>
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[12px] text-white/65">
+                  {activeWindow ? `Active interval • ${activeInterval} min` : `Next drop • ${nextDrop.interval} min`}
                 </div>
-              ) : (
-                <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
-              )}
-            </div>
 
-            {/* After attempt: reveal answer */}
-            {locked && attempt.answer ? (
-              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/25 p-3">
-                <div className="text-[11px] text-white/55">Correct word</div>
-                <div className="mt-1 text-[16px] font-extrabold tracking-tight text-white/90">
-                  {attempt.answer}
-                </div>
-                <div className="mt-1 text-[11px] text-white/55">
-                  Your answer: <span className="text-white/80">{attempt.userAnswer || "—"}</span>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Input + Send */}
-          <div className="rounded-[22px] border border-white/12 bg-white/6 p-4">
-            <div className="flex items-end gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-[12px] text-white/70">Type the correct word</div>
-                <input
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  placeholder={
-                    !activeWindow ? "Wait for the round…" : locked ? "Locked until next round" : "Type here…"
-                  }
-                  disabled={!canType}
-                  className={cx(
-                    "mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/25",
-                    canType
-                      ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35 focus:border-white/25"
-                      : "border-white/10 bg-slate-950/20 text-white/40 placeholder:text-white/25"
-                  )}
-                />
+                <span className={cx("text-[11px] font-semibold", locked ? "text-rose-100" : "text-white/70")}>
+                  {locked ? "Locked" : "Ready"}
+                </span>
               </div>
 
-              <button
-                onClick={onSend}
-                disabled={!canType || answer.trim().length === 0}
-                className={cx(
-                  "shrink-0 rounded-2xl border px-4 py-3 text-[13px] font-semibold transition active:scale-[0.98] touch-manipulation",
-                  canType && answer.trim().length > 0
-                    ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
-                    : "border-white/10 bg-white/5 opacity-50"
-                )}
-                style={{ minWidth: 96 }}
-              >
-                {submitting ? "Sending…" : "Send"}
-              </button>
-            </div>
-
-            {/* Result */}
-            {result ? (
-              <div
-                className={cx(
-                  "mt-3 rounded-2xl border px-3 py-2",
-                  result.ok && result.correct
-                    ? "border-emerald-400/25 bg-emerald-500/10"
-                    : "border-rose-400/25 bg-rose-500/10"
-                )}
-              >
-                {result.serverError ? (
-                  <div className="text-[12px] font-semibold">Error ❌ — {result.serverError}</div>
+              <div className="mt-4">
+                {activeWindow ? (
+                  <div className="select-none text-[44px] font-extrabold leading-none tracking-tight">
+                    {scrambled || "…"}
+                  </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 text-[12px] font-semibold">
-                      {result.correct ? "Correct ✅" : `Wrong ❌ — ${result.serverAnswer ?? "?"}`}
-                      <div className="mt-0.5 text-[11px] font-normal text-white/65">
-                        {result.interval} min • {result.ms} ms
+                  <div className="text-[13px] text-white/60">Word is hidden. Get ready.</div>
+                )}
+              </div>
+
+              {/* After attempt: reveal answer */}
+              {locked && attempt.answer ? (
+                <div className="mt-4 rounded-[20px] border border-white/10 bg-slate-950/25 p-4">
+                  <div className="text-[11px] text-white/50">Correct word</div>
+                  <div className="mt-1 text-[16px] font-extrabold tracking-tight text-white/95">
+                    {attempt.answer}
+                  </div>
+                  <div className="mt-1 text-[11px] text-white/50">
+                    Your answer: <span className="text-white/80">{attempt.userAnswer || "—"}</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </GlassCard>
+
+          {/* Input + CTA */}
+          <GlassCard className="overflow-hidden">
+            <div className="p-5">
+              <div className="text-[12px] font-semibold text-white/75">Type the correct word</div>
+
+              <div className="mt-3 flex items-end gap-3">
+                <div className="min-w-0 flex-1">
+                  <input
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder={!activeWindow ? "Wait for the round…" : locked ? "Locked until next round" : "Type here…"}
+                    disabled={!canType}
+                    className={cx(
+                      "w-full rounded-[22px] border px-4 py-3 text-[15px] outline-none",
+                      "shadow-[0_18px_50px_rgba(0,0,0,0.30)] backdrop-blur-[10px]",
+                      "focus:ring-2 focus:ring-blue-400/25",
+                      canType
+                        ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35 focus:border-white/25"
+                        : "border-white/10 bg-slate-950/20 text-white/40 placeholder:text-white/25"
+                    )}
+                  />
+                </div>
+
+                <button
+                  onClick={onSend}
+                  disabled={!canType || answer.trim().length === 0}
+                  className={cx(
+                    "shrink-0 rounded-[22px] border px-5 py-3 text-[14px] font-extrabold transition active:scale-[0.98] touch-manipulation",
+                    "shadow-[0_18px_55px_rgba(0,0,0,0.40)] backdrop-blur-[10px]",
+                    canType && answer.trim().length > 0
+                      ? "border-blue-300/22 bg-gradient-to-b from-blue-500/22 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]"
+                      : "border-white/10 bg-white/5 opacity-50"
+                  )}
+                  style={{ minWidth: 110 }}
+                >
+                  {submitting ? "Sending…" : "Send"}
+                </button>
+              </div>
+
+              {/* Result */}
+              {result ? (
+                <div
+                  className={cx(
+                    "mt-4 rounded-[22px] border px-4 py-3",
+                    result.ok && result.correct
+                      ? "border-emerald-400/22 bg-emerald-500/12"
+                      : "border-rose-400/22 bg-rose-500/12"
+                  )}
+                >
+                  {result.serverError ? (
+                    <div className="text-[12px] font-semibold">Error ❌ — {result.serverError}</div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-extrabold">
+                          {result.correct ? "Correct ✅" : `Wrong ❌ — ${result.serverAnswer ?? "?"}`}
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-white/65">
+                          {result.interval} min • {result.ms} ms
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[12px] font-extrabold text-white/90">
+                        +{result.points}
                       </div>
                     </div>
-                    <div className="shrink-0 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
-                      +{result.points}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : null}
+                  )}
+                </div>
+              ) : null}
 
-            {/* Locked hint */}
-            {locked ? (
-              <div className="mt-2 text-[11px] text-white/55">
-                You already used your attempt. Next round unlocks automatically.
+              {/* Hint */}
+              <div className="mt-3 text-[11px] text-white/50">
+                {locked
+                  ? "You already used your attempt. Next round unlocks automatically."
+                  : "One attempt only. If you miss, we’ll reveal the correct word."}
               </div>
-            ) : (
-              <div className="mt-2 text-[11px] text-white/55">
-                One attempt only. If you miss, we’ll reveal the correct word.
-              </div>
-            )}
-          </div>
+            </div>
+          </GlassCard>
 
-          {/* Settings (collapsed) */}
-          <details className="rounded-[22px] border border-white/12 bg-white/6">
-            <summary className="cursor-pointer list-none px-4 py-3">
+          {/* Duration (styled like screenshot) */}
+          <GlassCard className="overflow-hidden">
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[13px] font-extrabold text-white/90">Duration</div>
+                <div className="text-[11px] text-white/45">30m (+5) or 60m (00)</div>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {ALL_INTERVALS.map((i) => {
+                  const selected = !!enabledIntervals[i];
+                  const badge = selected ? "Selected" : "Tap";
+                  const subtitle =
+                    i === 30 ? "More frequent drops (+5 offset)" : "Classic hourly drops (00 offset)";
+
+                  return (
+                    <SelectCard
+                      key={i}
+                      title={i === 30 ? "30 minutes" : "1 hour"}
+                      subtitle={subtitle}
+                      selected={selected}
+                      onClick={() => toggleInterval(i)}
+                      icon={i === 30 ? "⏱️" : "🕒"}
+                      rightBadge={badge}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Settings (icon-only) */}
+          <details className="rounded-[26px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px] overflow-hidden">
+            <summary className="cursor-pointer list-none px-5 py-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[13px] font-semibold text-white/85">Settings</div>
-                  <div className="mt-0.5 text-[11px] text-white/55">
-                    Participation • Intervals • Notifications
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-white/65">Options</div>
+                  <div className="mt-1 text-[13px] font-extrabold text-white/90">
+                    Participation & Notifications
                   </div>
                 </div>
-                <div className="text-white/55">▾</div>
+
+                {/* icon-only "settings" */}
+                <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.42)]">
+                  <span className="text-[18px] leading-none">⚙️</span>
+                </div>
               </div>
             </summary>
 
-            <div className="px-4 pb-4 pt-1">
-              <div className="text-[12px] font-semibold text-white/85">Participation</div>
-              <label className="mt-2 flex items-center gap-3 text-[13px] text-white/80">
+            <div className="px-5 pb-5 pt-1">
+              <div className="text-[12px] font-extrabold text-white/85">Participation</div>
+
+              <label className="mt-3 flex items-center justify-between rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-extrabold text-white/90">Participate</div>
+                  <div className="mt-1 text-[11px] text-white/55">Get notified and join timed words</div>
+                </div>
                 <input
                   type="checkbox"
-                  className="h-5 w-5 accent-blue-400"
+                  className="h-6 w-6 accent-blue-400"
                   checked={participate}
                   onChange={(e) => setParticipate(e.target.checked)}
                 />
-                Participate in timed words
               </label>
-
-              <div className="mt-4 text-[12px] font-semibold text-white/85">Intervals</div>
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                {ALL_INTERVALS.map((i) => (
-                  <label
-                    key={i}
-                    className="flex items-center justify-between rounded-2xl border border-white/12 bg-white/5 px-3 py-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5 accent-blue-400"
-                        checked={!!enabledIntervals[i]}
-                        onChange={() => toggleInterval(i)}
-                      />
-                      <div className="text-[13px] text-white/80">
-                        {i} min {i === 30 ? "(+5)" : "(00)"}
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-white/50">
-                      next:{" "}
-                      {new Date(nextDropMs(now, i, OFFSETS_MS[i])).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </label>
-                ))}
-              </div>
 
               <button
                 onClick={requestNotifications}
-                className="mt-3 w-full rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-left transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+                className={cx(
+                  "mt-3 w-full rounded-[24px] border border-blue-300/22",
+                  "bg-gradient-to-b from-blue-500/20 to-blue-500/10 px-5 py-4 text-left transition",
+                  "shadow-[0_18px_55px_rgba(0,0,0,0.40)] backdrop-blur-[12px]",
+                  "hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[13px] font-semibold">Enable notifications</div>
-                    <div className="mt-0.5 text-[11px] text-white/65">“Word incoming in 1 minute”</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-extrabold">Enable notifications</div>
+                    <div className="mt-1 text-[11px] text-white/65">“Word incoming in 1 minute”</div>
                   </div>
-                  <div className="text-white/55">→</div>
+                  <span className="text-white/40 text-[18px]">›</span>
                 </div>
               </button>
 
-              <div className="mt-2 text-[11px] text-white/45">
+              <div className="mt-2 text-[11px] text-white/40">
                 Browser fully closed = not reliable until PWA + Service Worker.
               </div>
             </div>
