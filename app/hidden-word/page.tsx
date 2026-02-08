@@ -16,7 +16,7 @@ function TopBar({ title }: { title: string }) {
     <div className="flex items-center justify-between">
       <Link
         href="/"
-        className="rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        className="rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
       >
         ← Back
       </Link>
@@ -34,9 +34,9 @@ function msToClock(ms: number) {
 }
 
 function pointsForLen(n: number) {
-  if (n <= 3) return 1;
-  if (n <= 5) return 2;
-  return 3;
+  if (n <= 3) return 1; // 1–3
+  if (n <= 5) return 2; // 4–5
+  return 3; // 6+
 }
 
 function countLetters(str: string) {
@@ -56,7 +56,7 @@ function canBuild(word: string, lettersMap: Record<string, number>) {
   return true;
 }
 
-/* ---------- deterministic RNG ---------- */
+// deterministic RNG (stable per round key)
 function hashToUint32(str: string) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -72,15 +72,6 @@ function mulberry32(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-function shuffleStringDeterministic(str: string, seedKey: string) {
-  const arr = str.split("");
-  const rand = mulberry32(hashToUint32(seedKey));
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr.join("");
 }
 
 type DictWord = { word: string; len: number };
@@ -101,37 +92,14 @@ function unionLettersForWords(words: string[]) {
   return out;
 }
 
-// “Harder” shuffle to avoid obvious chunks at the start (east/ring etc.)
-function shuffleLettersHarder(
-  letters: string,
-  seedKey: string,
-  dictSet: Set<string> | null
-) {
-  let best = shuffleStringDeterministic(letters, seedKey);
-  if (!dictSet) return best;
-
-  const score = (s: string) => {
-    let p = 0;
-    for (let i = 0; i + 4 <= s.length; i++) {
-      const chunk = s.slice(i, i + 4).toLowerCase();
-      if (dictSet.has(chunk)) p += 2;
-    }
-    const badStarts = ["east", "ring", "tion", "ment", "ness", "able", "ing"];
-    for (const b of badStarts) if (s.toLowerCase().startsWith(b)) p += 3;
-    return p;
-  };
-
-  let bestScore = score(best);
-  for (let k = 0; k < 18; k++) {
-    const cand = shuffleStringDeterministic(letters, `${seedKey}:${k}`);
-    const sc = score(cand);
-    if (sc < bestScore) {
-      best = cand;
-      bestScore = sc;
-      if (bestScore === 0) break;
-    }
+function shuffleArrayDeterministic<T>(arr: T[], seedKey: string) {
+  const a = [...arr];
+  const rand = mulberry32(hashToUint32(seedKey));
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return best;
+  return a;
 }
 
 export default function HiddenWordPage() {
@@ -172,27 +140,6 @@ export default function HiddenWordPage() {
     };
   }, [router]);
 
-  // ✅ Keyboard spacer via CSS variable (does NOT push layout; only adds scroll room)
-  const [kbPx, setKbPx] = useState(0);
-  useEffect(() => {
-    const vv = (window as any).visualViewport as VisualViewport | undefined;
-    if (!vv) return;
-
-    const onResize = () => {
-      const diff = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKbPx(diff);
-      document.documentElement.style.setProperty("--kb", `${diff}px`);
-    };
-
-    onResize();
-    vv.addEventListener("resize", onResize);
-    vv.addEventListener("scroll", onResize);
-    return () => {
-      vv.removeEventListener("resize", onResize);
-      vv.removeEventListener("scroll", onResize);
-    };
-  }, []);
-
   const ROUND_SECONDS = 60;
   const totalMs = ROUND_SECONDS * 1000;
 
@@ -210,23 +157,25 @@ export default function HiddenWordPage() {
 
   const loadDictionary = async () => {
     setDictErr(null);
+
     const { data, error } = await supabase
       .from("hidden_word_dictionary")
-      .select("word,len")
-      .order("len", { ascending: true });
+      .select("word") // ✅ don't touch generated len
+      .order("word", { ascending: true });
 
     if (error) {
       setDictErr(error.message);
       return;
     }
 
-    const rows = (data ?? []).map((r: any) => ({
-      word: String(r.word || "").toLowerCase(),
-      len: Number(r.len || String(r.word || "").length),
-    })) as DictWord[];
+    const rows = (data ?? [])
+      .map((r: any) => String(r.word || "").toLowerCase().trim())
+      .filter(Boolean);
 
-    setDict(rows);
-    setDictSet(new Set(rows.map((x) => x.word)));
+    const list: DictWord[] = rows.map((w) => ({ word: w, len: w.length }));
+
+    setDict(list);
+    setDictSet(new Set(list.map((x) => x.word)));
   };
 
   useEffect(() => {
@@ -240,8 +189,14 @@ export default function HiddenWordPage() {
   const [roundKey, setRoundKey] = useState("");
   const [startMs, setStartMs] = useState(0);
 
-  const [letters, setLetters] = useState("");
+  const [letters, setLetters] = useState(""); // stored as string for DB
   const lettersMap = useMemo(() => countLetters(letters), [letters]);
+
+  const tiles = useMemo(() => {
+    if (!letters) return [];
+    // tiles are shuffled, so you don't see obvious chunks like "EAST"
+    return shuffleArrayDeterministic(letters.toUpperCase().split(""), `tiles:${roundKey || letters}`);
+  }, [letters, roundKey]);
 
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -250,11 +205,7 @@ export default function HiddenWordPage() {
   const foundSet = useMemo(() => new Set(found), [found]);
 
   const [score, setScore] = useState(0);
-
-  const [toast, setToast] = useState<{ text: string; tone: "ok" | "warn" | "bad" } | null>(
-    null
-  );
-  const toastTimerRef = useRef<number | null>(null);
+  const [toast, setToast] = useState<{ title: string; sub?: string } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -266,35 +217,23 @@ export default function HiddenWordPage() {
 
   const timeLabel = useMemo(() => msToClock(msLeft), [msLeft]);
 
-  const showToast = (text: string, tone: "ok" | "warn" | "bad" = "ok") => {
-    setToast({ text, tone });
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 1400);
+  const flash = (title: string, sub?: string) => {
+    setToast({ title, sub });
+    window.setTimeout(() => setToast(null), 900);
   };
 
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    };
-  }, []);
-
-  // Ensure input stays in view when keyboard opens (but letters stay sticky)
-  useEffect(() => {
-    if (phase !== "playing") return;
-    if (!kbPx) return;
-    window.setTimeout(() => {
-      inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }, 60);
-  }, [kbPx, phase]);
-
+  // Generate letters (10–14) that guarantee >=10 dictionary words
   const generateLettersGuaranteed = (seedKey: string) => {
-    if (!dict || dict.length < 50) return { letters: "", guaranteedWords: [] as string[] };
+    if (!dict || dict.length < 80) return { letters: "", ok: false };
 
     const rand = mulberry32(hashToUint32(seedKey));
-    const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
-    const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "apple";
 
-    for (let attempt = 0; attempt < 240; attempt++) {
+    // prefer mid-length words for better overlap, ignore very rare weird long ones
+    const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
+    const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "table";
+
+    for (let attempt = 0; attempt < 250; attempt++) {
+      // pick 10 base words
       const base: string[] = [];
       while (base.length < 10) {
         const w = pick();
@@ -302,30 +241,31 @@ export default function HiddenWordPage() {
       }
 
       let L = unionLettersForWords(base);
-      while (L.length < 10) {
-        const extra = pick();
-        L = unionLettersForWords([...base, extra]);
-      }
+
+      // Ensure 10–14
+      if (L.length < 10) continue;
       if (L.length > 14) continue;
 
-      const mixed = shuffleLettersHarder(L.toUpperCase(), seedKey, dictSet).slice(0, 14);
-
-      const map = countLetters(mixed);
+      // Build count
+      const map = countLetters(L);
       const possible = candidates
         .filter((w) => w.len >= 2 && w.len <= 10)
         .map((w) => w.word)
         .filter((w) => canBuild(w, map));
 
       const uniquePossible = Array.from(new Set(possible));
-      if (uniquePossible.length >= 10) return { letters: mixed.toUpperCase(), guaranteedWords: base };
+      if (uniquePossible.length >= 10) {
+        // IMPORTANT: store letters, but they will be displayed as shuffled tiles
+        return { letters: L.toUpperCase(), ok: true };
+      }
     }
 
-    return { letters: shuffleLettersHarder("EASTRINGLOW", seedKey, dictSet).toUpperCase(), guaranteedWords: [] };
+    return { letters: "TABLESROCKET".toUpperCase(), ok: false };
   };
 
   const startRound = () => {
     if (!dict || !dictSet) {
-      showToast("Loading words…", "warn");
+      flash("Loading…", "Words are still syncing");
       return;
     }
 
@@ -364,9 +304,10 @@ export default function HiddenWordPage() {
         score,
       });
 
-      setSaveMsg(error ? "Score not saved (policy/table). Gameplay is OK." : "Score saved ✅");
+      if (error) setSaveMsg("Score not saved (policy/table). Game is OK.");
+      else setSaveMsg("Saved ✅");
     } catch {
-      setSaveMsg("Score not saved yet (DB not ready).");
+      setSaveMsg("Score not saved (DB not ready).");
     } finally {
       setSaving(false);
     }
@@ -389,22 +330,24 @@ export default function HiddenWordPage() {
     if (!word) return;
 
     if (word.length < 2) {
-      showToast("Too short", "warn");
-      setInput("");
+      flash("Too short");
       return;
     }
-    if (foundSet.has(word)) {
-      showToast("Already found", "warn");
-      setInput("");
-      return;
-    }
+
     if (!canBuild(word, lettersMap)) {
-      showToast("Not possible with these letters", "bad");
+      flash("Nope", "That doesn't fit these letters");
       setInput("");
       return;
     }
+
     if (!dictSet.has(word)) {
-      showToast("Not in our dictionary (yet)", "bad");
+      flash("Not counted", "Try another word");
+      setInput("");
+      return;
+    }
+
+    if (foundSet.has(word)) {
+      flash("Already!", "You found that one");
       setInput("");
       return;
     }
@@ -414,8 +357,8 @@ export default function HiddenWordPage() {
     setScore((s) => s + pts);
     setInput("");
 
-    if (word.length <= 3) showToast(`Bravo! +${pts}`, "ok");
-    else showToast(`Fantastic! +${pts}`, "ok");
+    if (word.length >= 6) flash("Fantastic!", `+${pts} pts`);
+    else flash("Bravo!", `+${pts} pts`);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -437,28 +380,23 @@ export default function HiddenWordPage() {
     setSaveMsg(null);
   };
 
-  const lettersGrid = useMemo(() => {
-    const arr = letters ? letters.split("") : [];
-    return { first: arr.slice(0, 7), second: arr.slice(7, 14) };
-  }, [letters]);
-
   if (!authReady || !userId) {
     return (
       <main
         className={cx(
-          "min-h-[100svh] w-full",
+          "min-h-[100dvh] w-full",
           "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
         )}
         style={{
-          paddingTop: "max(env(safe-area-inset-top), 18px)",
-          paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
+          paddingTop: "max(env(safe-area-inset-top), 14px)",
+          paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
         }}
       >
-        <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+        <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4">
           <header className="pt-2">
             <TopBar title="Hidden Word" />
             <h1 className="mt-5 text-2xl font-bold tracking-tight">Hidden Word</h1>
-            <p className="mt-2 text-[13px] leading-relaxed text-white/70">Redirecting to login…</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/70">Redirecting…</p>
           </header>
         </div>
       </main>
@@ -468,24 +406,25 @@ export default function HiddenWordPage() {
   return (
     <main
       className={cx(
-        "min-h-[100svh] w-full overflow-x-hidden",
+        "min-h-[100dvh] w-full",
         "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
       )}
       style={{
-        paddingTop: "max(env(safe-area-inset-top), 18px)",
-        paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
+        paddingTop: "max(env(safe-area-inset-top), 14px)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
       }}
     >
-      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+      <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4">
+        {/* Header */}
         <header className="pt-2">
           <TopBar title="Hidden Word" />
 
-          <div className="mt-5 flex items-start justify-between gap-3">
+          <div className="mt-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-[26px] font-extrabold tracking-tight text-white/95">Hidden Word</h1>
-              <div className="mt-1 text-[12px] text-white/65">
+              <h1 className="text-[24px] font-extrabold tracking-tight">Hidden Word</h1>
+              <div className="mt-1 text-[12px] text-white/60">
                 {phase === "setup"
-                  ? "Find as many words as you can from the letters."
+                  ? "Find as many words as you can in 60 seconds."
                   : phase === "playing"
                   ? "Type a word and hit Enter."
                   : "Round finished."}
@@ -495,7 +434,7 @@ export default function HiddenWordPage() {
             <div className="flex items-center gap-2">
               <div
                 className={cx(
-                  "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
                   phase === "playing"
                     ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
                     : "border-blue-300/25 bg-blue-500/10 text-blue-100"
@@ -504,7 +443,7 @@ export default function HiddenWordPage() {
                 {phase === "playing" ? "LIVE" : "READY"}
               </div>
 
-              <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold text-white/85">
+              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
                 ⏱ {phase === "playing" ? timeLabel : "1:00"}
               </div>
             </div>
@@ -512,224 +451,173 @@ export default function HiddenWordPage() {
 
           {dictErr ? (
             <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px] text-white/85">
-              Dictionary load error: {dictErr}
+              Dictionary error: {dictErr}
             </div>
           ) : null}
         </header>
 
-        {/* Scroll area only */}
-        <section
-          className="mt-4 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4"
-          style={{
-            // add extra scroll room for keyboard, but DON'T push the whole layout
-            paddingBottom: `calc(16px + max(env(safe-area-inset-bottom), 18px) + var(--kb, 0px))`,
-          }}
-        >
-          {/* Sticky letters card (always visible while typing) */}
-          <div className="sticky top-0 z-10 pt-1">
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-              <div className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-[12px] text-white/65">Score</div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[12px] font-semibold text-white/90">
-                    🧩 {score} pts
-                  </div>
-                </div>
-
-                <div className="mt-4 text-[12px] text-white/65">Letters</div>
-
-                <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/35 p-3">
-                  <div className="grid grid-cols-7 gap-2">
-                    {(lettersGrid.first.length ? lettersGrid.first : Array.from({ length: 7 }).map(() => "•")).map(
-                      (ch, idx) => (
-                        <div
-                          key={`a_${idx}`}
-                          className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
-                        >
-                          {ch}
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-7 gap-2">
-                    {(lettersGrid.second.length ? lettersGrid.second : Array.from({ length: 7 }).map(() => "•")).map(
-                      (ch, idx) => (
-                        <div
-                          key={`b_${idx}`}
-                          className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
-                        >
-                          {ch}
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
-                    <div>1–3: +1 • 4–5: +2 • 6+: +3</div>
-                    <div>Found: {found.length}</div>
-                  </div>
-                </div>
+        {/* Sticky Letters + Score */}
+        <section className="mt-4 sticky top-[12px] z-10">
+          <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_0_60px_rgba(59,130,246,0.10)] backdrop-blur-xl">
+            <div className="flex items-center justify-between">
+              <div className="text-[12px] text-white/65">Score</div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
+                🧩 <span className="text-[13px] font-extrabold">{score}</span> pts
               </div>
             </div>
-          </div>
 
-          {phase === "setup" ? (
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-              <div className="p-4">
+            <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/25 p-3">
+              <div className="text-[12px] text-white/55">Letters</div>
+
+              {/* Tiles */}
+              <div className="mt-3 grid grid-cols-7 gap-2">
+                {(tiles.length ? tiles : Array.from({ length: 14 }, () => "•")).map((ch, i) => (
+                  <div
+                    key={`${ch}-${i}`}
+                    className="grid aspect-square place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px] font-extrabold text-white/90 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                  >
+                    {ch}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
+                <div>1–3: +1 • 4–5: +2 • 6+: +3</div>
+                <div>Found: {found.length}</div>
+              </div>
+            </div>
+
+            {phase === "setup" ? (
+              <div className="mt-3">
                 <button
                   onClick={startRound}
-                  disabled={!dict || !dictSet}
                   className={cx(
-                    "w-full rounded-2xl border border-blue-300/25",
-                    "bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-4 text-left",
-                    "transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)]",
-                    "active:scale-[0.98] touch-manipulation",
-                    !dict || !dictSet ? "opacity-60" : ""
+                    "w-full rounded-[24px] border border-blue-300/25",
+                    "bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-4 text-left",
+                    "transition hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
+                    "active:scale-[0.98] touch-manipulation"
                   )}
+                  disabled={!dict || !dictSet}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-[15px] font-extrabold">
-                        {!dict ? "Loading words…" : "Start"}
-                      </div>
-                      <div className="mt-1 text-[12px] text-white/70">
-                        60 seconds — find as many words as possible.
+                      <div className="text-[14px] font-semibold">{dict ? "Start" : "Loading…"}</div>
+                      <div className="mt-1 text-[11px] text-white/65">
+                        Letters are generated to have plenty of valid words.
                       </div>
                     </div>
-                    <div className="text-white/60 text-[18px]">›</div>
+                    <div className="text-white/55">→</div>
                   </div>
                 </button>
               </div>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Scroll area (found words) */}
+        <section className="mt-4 pb-40">
+          <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+            <div className="flex items-center justify-between">
+              <div className="text-[14px] font-extrabold text-white/92">
+                Found words ({found.length})
+              </div>
+              <div className="text-[11px] text-white/50">latest first</div>
             </div>
-          ) : null}
 
-          {phase === "playing" ? (
-            <>
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-                <div className="p-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <div className="min-w-0 w-full">
-                      <label className="block text-[12px] text-white/70">Type a word</label>
-                      <input
-                        ref={inputRef}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={onKeyDown}
-                        placeholder="Enter a word..."
-                        className={cx(
-                          "mt-2 w-full rounded-2xl border px-4 py-4 text-[16px] outline-none",
-                          "border-white/12 bg-slate-950/35 text-white placeholder:text-white/30",
-                          "focus:border-blue-300/30 focus:ring-2 focus:ring-blue-400/50"
-                        )}
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                        inputMode="text"
-                      />
-                      <div className="mt-2 text-[11px] text-white/45">
-                        Keep going — speed matters. ⌁
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={submitWord}
-                      className={cx(
-                        "shrink-0 rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-5 py-4",
-                        "text-[14px] font-extrabold transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.20)]",
-                        "active:scale-[0.98] touch-manipulation"
-                      )}
-                      style={{ minWidth: 108 }}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  {toast ? (
-                    <div
-                      className={cx(
-                        "mt-3 rounded-2xl border px-3 py-2 text-[12px] font-semibold",
-                        toast.tone === "ok"
-                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-                          : toast.tone === "warn"
-                          ? "border-amber-300/20 bg-amber-500/10 text-amber-100"
-                          : "border-rose-300/20 bg-rose-500/10 text-rose-100"
-                      )}
-                    >
-                      {toast.text}
-                    </div>
-                  ) : null}
-                </div>
+            {found.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {found.slice(0, 40).map((w) => (
+                  <span
+                    key={w}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/85"
+                  >
+                    {w}
+                    <span className="text-white/45">+{pointsForLen(w.length)}</span>
+                  </span>
+                ))}
               </div>
+            ) : (
+              <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
+            )}
 
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-                <div className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[14px] font-extrabold text-white/92">
-                      Found words ({found.length})
-                    </div>
-                    <div className="text-[11px] text-white/55">latest first</div>
-                  </div>
-
-                  {found.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {found.slice(0, 28).map((w) => (
-                        <span
-                          key={w}
-                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/90"
-                        >
-                          {w}
-                          <span className="text-white/45">+{pointsForLen(w.length)}</span>
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : null}
-
-          {phase === "done" ? (
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[16px] font-extrabold text-white/95">Finished</div>
-                    <div className="mt-1 text-[12px] text-white/65">
-                      Words: <b>{found.length}</b> • Score: <b>{score}</b>
-                    </div>
-                  </div>
-                  <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[12px] font-extrabold text-white/90">
-                    {score} pts
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/80">
-                  {saving ? "Saving score…" : saveMsg ?? "Score ready."}
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
+            {phase === "done" ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-[12px] text-white/80">
+                {saving ? "Saving score…" : saveMsg ?? "Done."}
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
                     onClick={resetToSetup}
-                    className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-extrabold text-white/90 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+                    className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
                   >
                     New round
                   </button>
                   <Link
                     href="/leaderboard"
-                    className="rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-center text-[13px] font-extrabold text-white/95 transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.18)] active:scale-[0.98] touch-manipulation"
+                    className="rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-4 py-3 text-center text-[13px] font-semibold text-white/92 transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)] active:scale-[0.98] touch-manipulation"
                   >
                     Leaderboard
                   </Link>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
 
-        <footer className="pb-2 pt-2 text-center text-[11px] text-white/35">
+        {/* Bottom fixed input bar (keyboard-friendly) */}
+        {phase === "playing" ? (
+          <div
+            className="fixed left-0 right-0 bottom-0 z-20"
+            style={{
+              paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
+            }}
+          >
+            <div className="mx-auto max-w-md px-4">
+              <div className="rounded-[28px] border border-white/10 bg-slate-950/55 p-4 backdrop-blur-xl shadow-[0_-20px_60px_rgba(0,0,0,0.45)]">
+                <div className="flex items-end gap-3">
+                  <div className="min-w-0 w-full">
+                    <label className="block text-[12px] text-white/70">Type a word</label>
+                    <input
+                      ref={inputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={onKeyDown}
+                      placeholder="Enter a word…"
+                      className={cx(
+                        "mt-2 w-full rounded-2xl border px-4 py-3 text-[16px] outline-none focus:ring-2 focus:ring-blue-400/60",
+                        "border-white/12 bg-white/5 text-white placeholder:text-white/35"
+                      )}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      inputMode="text"
+                    />
+                    <div className="mt-2 text-[11px] text-white/45">Speed matters. Keep going.</div>
+                  </div>
+
+                  <button
+                    onClick={submitWord}
+                    className={cx(
+                      "shrink-0 rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-3",
+                      "text-[14px] font-semibold transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)]",
+                      "active:scale-[0.98] touch-manipulation"
+                    )}
+                    style={{ minWidth: 110 }}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {toast ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="text-[12px] font-semibold text-white/90">{toast.title}</div>
+                    {toast.sub ? <div className="text-[11px] text-white/60">{toast.sub}</div> : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
           Quick • Hidden Word
         </footer>
       </div>
