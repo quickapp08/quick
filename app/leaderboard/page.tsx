@@ -5,14 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { getRank } from "../../lib/rank";
 
-type Mode = "word" | "photo" | "hidden";
+type Mode = "word" | "photo" | "hidden" | "fast";
 type Scope = "world" | "region";
 
 type RowBase = {
   place: number;
   user_id: string;
   username: string;
-  country_code?: string; // hidden may not have it
+  country_code?: string;
 };
 
 type RowWP = RowBase & {
@@ -24,7 +24,12 @@ type RowHidden = RowBase & {
   best_words_count: number;
 };
 
-type Row = RowWP | RowHidden;
+type RowFast = RowBase & {
+  best_score: number;
+  duration_sec: number; // 30 or 60
+};
+
+type Row = RowWP | RowHidden | RowFast;
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -133,33 +138,44 @@ export default function LeaderboardPage() {
   const [mode, setMode] = useState<Mode>("word");
   const [scope, setScope] = useState<Scope>("world");
 
-  const [region, setRegion] = useState<string>("HR"); // default HR
+  const [fastDuration, setFastDuration] = useState<"30" | "60">("60");
+
+  const [region, setRegion] = useState<string>("HR");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // If user switches to Hidden, force scope=world (since we don't have hidden region yet)
+  // Hidden + Fast = world only (za sad)
   useEffect(() => {
-    if (mode === "hidden" && scope !== "world") setScope("world");
+    if ((mode === "hidden" || mode === "fast") && scope !== "world") setScope("world");
   }, [mode, scope]);
 
   const title = useMemo(() => {
     const m =
-      mode === "word" ? "Word Quick" : mode === "photo" ? "Photo Quick" : "Hidden Word";
+      mode === "word"
+        ? "Word Quick"
+        : mode === "photo"
+        ? "Photo Quick"
+        : mode === "hidden"
+        ? "Hidden Word"
+        : "Fast Round";
+
     const s =
-      mode === "hidden"
+      mode === "hidden" || mode === "fast"
         ? "World"
         : scope === "world"
         ? "World"
         : `Region (${region || "—"})`;
-    return `${m} • ${s} • Top 100`;
-  }, [mode, scope, region]);
+
+    const extra = mode === "fast" ? ` • ${fastDuration}s` : "";
+    return `${m} • ${s}${extra} • Top 100`;
+  }, [mode, scope, region, fastDuration]);
 
   const fetchBoard = async () => {
     setLoading(true);
     setMsg(null);
 
-    // Hidden Word uses view directly (no RPC, so we don't break existing logic)
+    // Hidden Word (view)
     if (mode === "hidden") {
       const { data, error } = await supabase
         .from("v_hidden_word_leaderboard_top100")
@@ -186,7 +202,40 @@ export default function LeaderboardPage() {
       return;
     }
 
-    // Word/Photo stay exactly as-is via your RPC
+    // Fast Round (view)
+    if (mode === "fast") {
+      const dur = Number(fastDuration);
+
+      const { data, error } = await supabase
+        .from("v_fast_round_leaderboard")
+        .select("user_id, username, country_code, duration_sec, best_score")
+        .eq("duration_sec", dur)
+        .order("best_score", { ascending: false })
+        .order("last_played_at", { ascending: false })
+        .limit(100);
+
+      if (error) {
+        setMsg(error.message);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const mapped: RowFast[] = (data ?? []).map((r: any, idx: number) => ({
+        place: idx + 1,
+        user_id: String(r.user_id),
+        username: String(r.username ?? "Player"),
+        country_code: r.country_code ? String(r.country_code) : undefined,
+        duration_sec: Number(r.duration_sec ?? dur),
+        best_score: Number(r.best_score ?? 0),
+      }));
+
+      setRows(mapped);
+      setLoading(false);
+      return;
+    }
+
+    // Word/Photo (RPC ostaje netaknuto)
     const { data, error } = await supabase.rpc("get_leaderboard", {
       p_mode: mode,
       p_scope: scope,
@@ -208,9 +257,10 @@ export default function LeaderboardPage() {
   useEffect(() => {
     fetchBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, scope, region]);
+  }, [mode, scope, region, fastDuration]);
 
   const isHidden = mode === "hidden";
+  const isFast = mode === "fast";
 
   return (
     <main
@@ -227,7 +277,6 @@ export default function LeaderboardPage() {
         <header className="pt-2">
           <TopBar title="Leaderboard" />
 
-          {/* Header card */}
           <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -241,7 +290,6 @@ export default function LeaderboardPage() {
             </div>
           </div>
 
-          {/* Controls */}
           <div className="mt-4 space-y-2">
             <Segmented
               value={mode}
@@ -250,9 +298,11 @@ export default function LeaderboardPage() {
                 { value: "word", label: "Word", icon: "⌨️" },
                 { value: "photo", label: "Photo", icon: "📸" },
                 { value: "hidden", label: "Hidden", icon: "🧩" },
+                { value: "fast", label: "Fast", icon: "⚡" },
               ]}
             />
 
+            {/* Scope (Fast/Hidden će automatski ostati World) */}
             <Segmented
               value={scope}
               onChange={(v) => setScope(v as Scope)}
@@ -262,8 +312,20 @@ export default function LeaderboardPage() {
               ]}
             />
 
+            {/* Fast duration toggle */}
+            {isFast ? (
+              <Segmented
+                value={fastDuration}
+                onChange={(v) => setFastDuration(v as "30" | "60")}
+                options={[
+                  { value: "30", label: "30s", icon: "⏱️" },
+                  { value: "60", label: "60s", icon: "⏱️" },
+                ]}
+              />
+            ) : null}
+
             {/* Region input only for Word/Photo */}
-            {scope === "region" && !isHidden ? (
+            {scope === "region" && !isHidden && !isFast ? (
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[12px] font-semibold text-white/85">Region code</div>
@@ -284,10 +346,9 @@ export default function LeaderboardPage() {
               </div>
             ) : null}
 
-            {/* Small note when Hidden + Region */}
-            {isHidden && scope === "region" ? (
+            {(isHidden || isFast) && scope === "region" ? (
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-[12px] text-white/70">
-                Hidden Word currently supports <b>World</b> leaderboard only.
+                This mode currently supports <b>World</b> leaderboard only.
               </div>
             ) : null}
 
@@ -314,10 +375,7 @@ export default function LeaderboardPage() {
                 )}
                 aria-hidden="true"
               />
-              <div
-                className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6"
-                aria-hidden="true"
-              />
+              <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-white/6" aria-hidden="true" />
 
               <div className="relative z-[2] flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -335,7 +393,6 @@ export default function LeaderboardPage() {
           </div>
         </header>
 
-        {/* List */}
         <section className="mt-5 space-y-2">
           {loading ? (
             <div className="rounded-3xl border border-white/12 bg-white/6 p-4 text-white/70">
@@ -376,11 +433,12 @@ export default function LeaderboardPage() {
           ) : (
             rows.map((r) => {
               const isTop = r.place <= 3;
-              const isHiddenRow = "best_score" in r;
+              const isHiddenRow = "best_words_count" in r;
+              const isFastRow = "duration_sec" in r;
 
               return (
                 <div
-                  key={r.user_id}
+                  key={`${r.user_id}:${r.place}`}
                   className={cx(
                     "rounded-3xl border p-4",
                     isTop ? "border-blue-300/20 bg-blue-500/10" : "border-white/12 bg-white/6"
@@ -396,7 +454,6 @@ export default function LeaderboardPage() {
                             {r.username}
                           </div>
 
-                          {/* country chip only if present */}
                           {"country_code" in r && r.country_code ? (
                             <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
                               {r.country_code}
@@ -404,14 +461,13 @@ export default function LeaderboardPage() {
                           ) : null}
                         </div>
 
-                        {/* Rank chip only for Word/Photo */}
-                        {!isHiddenRow ? (
+                        {!isHiddenRow && !isFastRow ? (
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
                               🏷️ {getRank((r as RowWP).points_total)}
                             </span>
                           </div>
-                        ) : (
+                        ) : isHiddenRow ? (
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
                               🧩 Hidden Word
@@ -420,19 +476,34 @@ export default function LeaderboardPage() {
                               🔤 {(r as RowHidden).best_words_count} words
                             </span>
                           </div>
+                        ) : (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                              ⚡ Fast Round
+                            </span>
+                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                              ⏱ {(r as RowFast).duration_sec}s
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <div className="shrink-0 text-right">
                       <div className="text-[11px] text-white/55">
-                        {isHiddenRow ? "Score" : "Points"}
+                        {isHiddenRow || isFastRow ? "Best" : "Points"}
                       </div>
 
                       <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
-                        <span className="text-[14px]">{isHiddenRow ? "🧩" : "⚡"}</span>
+                        <span className="text-[14px]">
+                          {isHiddenRow ? "🧩" : isFastRow ? "⚡" : "⚡"}
+                        </span>
                         <span className="text-[16px] font-extrabold">
-                          {isHiddenRow ? (r as RowHidden).best_score : (r as RowWP).points_total}
+                          {isHiddenRow
+                            ? (r as RowHidden).best_score
+                            : isFastRow
+                            ? (r as RowFast).best_score
+                            : (r as RowWP).points_total}
                         </span>
                       </div>
                     </div>
