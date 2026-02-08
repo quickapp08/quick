@@ -382,7 +382,10 @@ export default function HomePage() {
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         <MiniChip icon="🌍" text={`#${myOk?.world_rank ?? "—"}`} />
-                        <MiniChip icon="⚡" text={`${myOk?.total_points ?? 0} pts`} />
+                        <MiniChip
+                          icon="⚡"
+                          text={`${myOk?.total_points ?? 0} pts`}
+                        />
                       </div>
                     </div>
 
@@ -417,7 +420,9 @@ export default function HomePage() {
                     Login
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
+                <div className="relative z-[2] text-white/35 text-[18px]">
+                  ›
+                </div>
               </Link>
 
               <Link
@@ -438,7 +443,9 @@ export default function HomePage() {
                     Register
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
+                <div className="relative z-[2] text-white/35 text-[18px]">
+                  ›
+                </div>
               </Link>
 
               {msg ? (
@@ -449,9 +456,14 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              {/* ✅ added Fast Round here (logged-in menu only) */}
+              {/* ✅ ONLY CHANGE: add Hidden Word tile */}
               <div className="grid grid-cols-2 gap-3">
-                <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
+                <ModeTile
+                  title="Word Quick"
+                  icon="⌨️"
+                  href="/quick-word"
+                  tone="blue"
+                />
                 {user ? (
                   <ModeTile
                     title="Photo Quick"
@@ -460,8 +472,20 @@ export default function HomePage() {
                     tone="blue"
                   />
                 ) : (
-                  <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
+                  <ModeTile
+                    title="Photo Quick"
+                    icon="📸"
+                    onClick={openPhoto}
+                    tone="dark"
+                  />
                 )}
+
+                <ModeTile
+                  title="Hidden Word"
+                  icon="🕵️"
+                  href="/hidden-word"
+                  tone="blue"
+                />
 
                 <ModeTile
                   title="Fast Round"
@@ -473,14 +497,30 @@ export default function HomePage() {
 
               {/* NO locked badge; only muted look */}
               <div className="grid grid-cols-2 gap-3">
-                <CompactTile title="Together" icon="👥" onClick={() => router.push("/create-own")} />
-                <CompactTile title="Tournaments" icon="🏟️" onClick={() => router.push("/tournaments")} />
+                <CompactTile
+                  title="Together"
+                  icon="👥"
+                  onClick={() => router.push("/create-own")}
+                />
+                <CompactTile
+                  title="Tournaments"
+                  icon="🏟️"
+                  onClick={() => router.push("/tournaments")}
+                />
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <IconOnlyLink href="/leaderboard" icon="🏆" ariaLabel="Leaderboard" />
-                  <IconOnlyLink href="/settings" icon="⚙️" ariaLabel="Settings" />
+                  <IconOnlyLink
+                    href="/leaderboard"
+                    icon="🏆"
+                    ariaLabel="Leaderboard"
+                  />
+                  <IconOnlyLink
+                    href="/settings"
+                    icon="⚙️"
+                    ariaLabel="Settings"
+                  />
                 </div>
 
                 <button
