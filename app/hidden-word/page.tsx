@@ -17,12 +17,20 @@ function TopBar({ title }: { title: string }) {
     <div className="flex items-center justify-between">
       <Link
         href="/"
-        className="rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        className={cx(
+          "inline-flex items-center gap-2 rounded-2xl border px-3 py-2",
+          "border-white/10 bg-white/5 text-[13px] font-semibold text-white/85",
+          "shadow-[0_14px_40px_rgba(0,0,0,0.35)] backdrop-blur-[10px]",
+          "transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        )}
       >
-        ← Back
+        <span className="text-[14px] leading-none">←</span>
+        <span>Back</span>
       </Link>
-      <div className="text-[13px] font-semibold text-white/85">{title}</div>
-      <div className="w-[64px]" />
+
+      <div className="text-[13px] font-semibold text-white/75">{title}</div>
+
+      <div className="w-[72px]" />
     </div>
   );
 }
@@ -117,6 +125,155 @@ function makeTiles(letters: string, seedKey: string): Tile[] {
   }));
 }
 
+/* ---------- UI atoms (design only) ---------- */
+
+function Card({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06]",
+        "shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]",
+        className
+      )}
+    >
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-blue-500/14 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -left-16 bottom-[-90px] h-56 w-56 rounded-full bg-blue-500/10 blur-3xl"
+        aria-hidden="true"
+      />
+      <div className="relative z-[2]">{children}</div>
+    </div>
+  );
+}
+
+function StatusPill({ phase }: { phase: Phase }) {
+  const tone =
+    phase === "playing"
+      ? "border-emerald-300/25 bg-emerald-500/12 text-emerald-50"
+      : phase === "done"
+      ? "border-blue-300/22 bg-blue-500/12 text-blue-50"
+      : "border-white/12 bg-white/6 text-white/85";
+
+  const icon = phase === "playing" ? "🟢" : phase === "done" ? "🏁" : "⚡";
+  const label = phase === "playing" ? "LIVE" : phase === "done" ? "FINISHED" : "READY";
+
+  return (
+    <div
+      className={cx(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-extrabold",
+        "backdrop-blur-[10px] shadow-[0_14px_40px_rgba(0,0,0,0.35)]",
+        tone
+      )}
+    >
+      <span className="text-[13px] leading-none">{icon}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function MiniStat({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-extrabold text-white/90 shadow-[0_14px_40px_rgba(0,0,0,0.30)] backdrop-blur-[10px]">
+      <span className="text-[13px] leading-none">{icon}</span>
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function PrimaryCTA({
+  title,
+  subtitle,
+  onClick,
+  disabled,
+  rightIcon = "→",
+}: {
+  title: string;
+  subtitle?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  rightIcon?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(
+        "group relative w-full overflow-hidden rounded-3xl border px-5 py-5 text-left",
+        "border-blue-300/22 bg-gradient-to-b from-blue-500/28 to-blue-500/12",
+        "shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-[12px] transition",
+        "hover:-translate-y-[1px] hover:shadow-[0_0_70px_rgba(59,130,246,0.25)]",
+        "active:scale-[0.98] touch-manipulation",
+        disabled ? "opacity-60 pointer-events-none" : ""
+      )}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/20 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className={cx(
+          "pointer-events-none absolute -left-44 top-0 h-full w-44 rotate-[20deg]",
+          "bg-gradient-to-r from-transparent via-white/16 to-transparent blur-xl",
+          "transition-transform duration-700 ease-out",
+          "group-hover:translate-x-[560px]"
+        )}
+        aria-hidden="true"
+      />
+      <div className="relative z-[2] flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[18px] font-extrabold tracking-tight text-white/95">
+            {title}
+          </div>
+          {subtitle ? (
+            <div className="mt-1 text-[12px] text-white/65">{subtitle}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-blue-300/18 bg-blue-500/12">
+          <span className="text-[18px] leading-none">{rightIcon}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function Toast({
+  tone,
+  title,
+  sub,
+}: {
+  tone: FlashTone;
+  title: string;
+  sub?: string;
+}) {
+  const cls =
+    tone === "ok"
+      ? "border-emerald-300/25 bg-emerald-500/12"
+      : tone === "bad"
+      ? "border-rose-300/25 bg-rose-500/12"
+      : "border-white/10 bg-white/5";
+
+  return (
+    <div className={cx("rounded-3xl border p-4 text-[12px] text-white/90", cls)}>
+      <div className="font-semibold">{title}</div>
+      {sub ? <div className="mt-0.5 text-white/70">{sub}</div> : null}
+    </div>
+  );
+}
+
 export default function HiddenWordPage() {
   const router = useRouter();
 
@@ -175,7 +332,7 @@ export default function HiddenWordPage() {
 
     const { data, error } = await supabase
       .from("hidden_word_dictionary")
-      .select("word") // ✅ don't touch generated len
+      .select("word")
       .order("word", { ascending: true });
 
     if (error) {
@@ -204,7 +361,7 @@ export default function HiddenWordPage() {
   const [roundKey, setRoundKey] = useState("");
   const [startMs, setStartMs] = useState(0);
 
-  const [letters, setLetters] = useState(""); // stored for DB
+  const [letters, setLetters] = useState("");
   const lettersMap = useMemo(() => countLetters(letters), [letters]);
 
   const [tiles, setTiles] = useState<Tile[]>([]);
@@ -225,7 +382,11 @@ export default function HiddenWordPage() {
   const [lockTone, setLockTone] = useState<null | "ok" | "bad">(null);
   const clearLockTimerRef = useRef<number | null>(null);
 
-  const [toast, setToast] = useState<{ tone: FlashTone; title: string; sub?: string } | null>(null);
+  const [toast, setToast] = useState<{
+    tone: FlashTone;
+    title: string;
+    sub?: string;
+  } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -263,11 +424,14 @@ export default function HiddenWordPage() {
 
   // Generate letters (10–14) that guarantee >=10 dictionary words (best effort)
   const generateLettersGuaranteed = (seedKey: string) => {
-    if (!dict || dict.length < 120) return { letters: "TABLESROCKET".toUpperCase(), ok: false };
+    if (!dict || dict.length < 120) {
+      return { letters: "TABLESROCKET".toUpperCase(), ok: false };
+    }
 
     const rand = mulberry32(hashToUint32(seedKey));
     const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
-    const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "table";
+    const pick = () =>
+      candidates[Math.floor(rand() * candidates.length)]?.word || "table";
 
     for (let attempt = 0; attempt < 300; attempt++) {
       const base: string[] = [];
@@ -353,10 +517,9 @@ export default function HiddenWordPage() {
 
   const onTapTile = (id: string) => {
     if (phase !== "playing") return;
-    if (lockTone) return; // locked while showing ok/bad
+    if (lockTone) return;
 
     setSelectedIds((prev) => {
-      // allow selecting same tile only once (id is unique)
       if (prev.includes(id)) return prev;
       return [...prev, id];
     });
@@ -385,7 +548,6 @@ export default function HiddenWordPage() {
       return;
     }
 
-    // fits letters? (should always be true because we pick tiles, but keep safe)
     if (!canBuild(word, lettersMap)) {
       setLockTone("bad");
       flash("bad", "Nope", "Doesn't fit these letters");
@@ -412,9 +574,7 @@ export default function HiddenWordPage() {
     setScore((s) => s + pts);
 
     setLockTone("ok");
-    if (word.length >= 6) flash("ok", "Fantastic!", `+${pts} pts`);
-    else flash("ok", "Bravo!", `+${pts} pts`);
-
+    flash("ok", word.length >= 6 ? "Fantastic!" : "Bravo!", `+${pts} pts`);
     safeClearLockLater();
   };
 
@@ -435,7 +595,6 @@ export default function HiddenWordPage() {
   const tileClass = (id: string) => {
     const isSelected = selectedSet.has(id);
 
-    // if locked after send, paint selected tiles green/red
     if (isSelected && lockTone === "ok") {
       return "border-emerald-300/25 bg-emerald-500/18 text-white shadow-[0_0_30px_rgba(16,185,129,0.18)]";
     }
@@ -454,275 +613,300 @@ export default function HiddenWordPage() {
     return (
       <main
         className={cx(
-          "min-h-[100dvh] w-full",
+          "min-h-[100svh] w-full",
           "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
         )}
         style={{
-          paddingTop: "max(env(safe-area-inset-top), 14px)",
-          paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
+          paddingTop: "max(env(safe-area-inset-top), 18px)",
+          paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
         }}
       >
-        <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4">
+        <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
           <header className="pt-2">
             <TopBar title="Hidden Word" />
-            <h1 className="mt-5 text-2xl font-bold tracking-tight">Hidden Word</h1>
-            <p className="mt-2 text-[13px] leading-relaxed text-white/70">Redirecting…</p>
+            <h1 className="mt-5 text-[26px] font-extrabold tracking-tight">
+              Hidden Word
+            </h1>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/70">
+              Redirecting…
+            </p>
           </header>
         </div>
       </main>
     );
   }
 
+  const showTiles = tiles.length > 0;
+
   return (
     <main
       className={cx(
-        "min-h-[100dvh] w-full",
-        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
+        "relative min-h-[100svh] w-full text-white",
+        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 overflow-x-hidden overscroll-x-none touch-pan-y"
       )}
       style={{
-        paddingTop: "max(env(safe-area-inset-top), 14px)",
-        paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
+        paddingTop: "max(env(safe-area-inset-top), 18px)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
-      <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4">
-        {/* Header */}
+      {/* glow bg like FastRound */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-blue-500/12 blur-[70px]" />
+        <div className="absolute top-[240px] left-[-140px] h-[420px] w-[420px] rounded-full bg-blue-500/10 blur-[70px]" />
+        <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
+      </div>
+
+      <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
+        {/* Header (NO CARD) */}
         <header className="pt-2">
           <TopBar title="Hidden Word" />
 
-          <div className="mt-4 flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-[24px] font-extrabold tracking-tight">Hidden Word</h1>
-              <div className="mt-1 text-[12px] text-white/60">
+          <div className="mt-5 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold text-white/65">
+                Game mode
+              </div>
+              <h1 className="mt-1 text-[28px] font-extrabold tracking-tight text-white/95 leading-tight">
+                Hidden Word
+              </h1>
+              <div className="mt-2 text-[12px] text-white/55">
                 {phase === "setup"
                   ? "Tap letters to form words — no keyboard."
                   : phase === "playing"
                   ? "Tap letters, then press Send."
-                  : "Round finished."}
+                  : "Finished. Check your words."}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <MiniStat icon="🧩" text={`${score} pts`} />
+                <MiniStat icon="🔎" text={`${found.length} found`} />
+                <MiniStat icon="⏱" text={phase === "playing" ? timeLabel : "1:00"} />
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div
-                className={cx(
-                  "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                  phase === "playing"
-                    ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
-                    : "border-blue-300/25 bg-blue-500/10 text-blue-100"
-                )}
-              >
-                {phase === "playing" ? "LIVE" : "READY"}
-              </div>
-
-              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
-                ⏱ {phase === "playing" ? timeLabel : "1:00"}
-              </div>
+            <div className="shrink-0">
+              <StatusPill phase={phase} />
             </div>
           </div>
 
           {dictErr ? (
-            <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px] text-white/85">
-              Dictionary error: {dictErr}
+            <div className="mt-4">
+              <Toast tone="bad" title="Dictionary error" sub={dictErr} />
+            </div>
+          ) : null}
+
+          {toast ? (
+            <div className="mt-4">
+              <Toast tone={toast.tone} title={toast.title} sub={toast.sub} />
             </div>
           ) : null}
         </header>
 
-        {/* Game Card */}
-        <section className="mt-4">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_0_60px_rgba(59,130,246,0.10)] backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div className="text-[12px] text-white/65">Score</div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
-                🧩 <span className="text-[13px] font-extrabold">{score}</span> pts
+        {/* Content */}
+        <section className="mt-5 space-y-3 pb-28">
+          {/* Letters card */}
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold text-white/80">
+                  Letters
+                </div>
+                <div className="text-[11px] text-white/45">
+                  1–3:+1 • 4–5:+2 • 6+:+3
+                </div>
               </div>
-            </div>
-
-            <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/25 p-3">
-              <div className="text-[12px] text-white/55">Letters</div>
 
               <div className="mt-3 grid grid-cols-7 gap-2">
-                {(tiles.length ? tiles : Array.from({ length: 14 }, (_, i) => ({ id: `p-${i}`, ch: "•" }))).map(
-                  (t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => onTapTile(t.id)}
-                      disabled={phase !== "playing" || !tiles.length || !!lockTone || selectedSet.has(t.id)}
-                      className={cx(
-                        "grid aspect-square place-items-center rounded-2xl border text-[16px] font-extrabold",
-                        "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition active:scale-[0.98] touch-manipulation",
-                        tileClass(t.id),
-                        (phase !== "playing" || !tiles.length) && "opacity-60",
-                        selectedSet.has(t.id) && !lockTone && "ring-1 ring-white/6"
-                      )}
-                    >
-                      {t.ch}
-                    </button>
-                  )
-                )}
+                {(showTiles
+                  ? tiles
+                  : Array.from({ length: 14 }, (_, i) => ({
+                      id: `p-${i}`,
+                      ch: "•",
+                    }))
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => onTapTile(t.id)}
+                    disabled={
+                      phase !== "playing" ||
+                      !showTiles ||
+                      !!lockTone ||
+                      selectedSet.has(t.id)
+                    }
+                    className={cx(
+                      "grid aspect-square place-items-center rounded-2xl border text-[16px] font-extrabold",
+                      "bg-slate-950/30 shadow-[0_12px_34px_rgba(0,0,0,0.35)] transition",
+                      "active:scale-[0.98] touch-manipulation",
+                      tileClass(t.id),
+                      (phase !== "playing" || !showTiles) && "opacity-60",
+                      selectedSet.has(t.id) && !lockTone && "ring-1 ring-white/6"
+                    )}
+                  >
+                    {t.ch}
+                  </button>
+                ))}
               </div>
 
               <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
-                <div>1–3: +1 • 4–5: +2 • 6+: +3</div>
-                <div>Found: {found.length}</div>
+                <div>Tap letters only once.</div>
+                <div>Round: {ROUND_SECONDS}s</div>
               </div>
             </div>
+          </Card>
 
-            {/* Selected word display + controls */}
-            <div className="mt-3 rounded-[24px] border border-white/10 bg-white/5 p-3">
-              <div className="text-[12px] text-white/60">Your word</div>
-
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate rounded-2xl border border-white/10 bg-slate-950/25 px-4 py-3 text-[18px] font-extrabold tracking-[0.14em] text-white/90">
-                    {selectedWord || "—"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-white/45">
-                    Tap letters to build • Back removes last
-                  </div>
+          {/* Your word card */}
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold text-white/80">
+                  Your word
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={onBackspace}
-                    disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
-                    className={cx(
-                      "rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85",
-                      "transition active:scale-[0.98] touch-manipulation",
-                      (!selectedIds.length || !!lockTone) && "opacity-50"
-                    )}
-                  >
-                    ⌫
-                  </button>
-                  <button
-                    onClick={onClear}
-                    disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
-                    className={cx(
-                      "rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85",
-                      "transition active:scale-[0.98] touch-manipulation",
-                      (!selectedIds.length || !!lockTone) && "opacity-50"
-                    )}
-                  >
-                    Clear
-                  </button>
+                <div className="text-[11px] text-white/45">
+                  Back removes last
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 gap-2">
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3 text-[18px] font-extrabold tracking-[0.14em] text-white/92">
+                {selectedWord || "—"}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
-                  onClick={submitSelected}
-                  disabled={phase !== "playing" || selectedIds.length < 2 || !!lockTone}
+                  onClick={onBackspace}
+                  disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
                   className={cx(
-                    "w-full rounded-[24px] border border-blue-300/25",
-                    "bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-4 text-left",
-                    "transition hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
-                    "active:scale-[0.98] touch-manipulation",
-                    (selectedIds.length < 2 || !!lockTone) && "opacity-60"
+                    "rounded-3xl border border-white/10 bg-white/5 px-4 py-3",
+                    "text-[13px] font-extrabold text-white/90",
+                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
+                    "hover:bg-white/8 active:scale-[0.98] touch-manipulation",
+                    (!selectedIds.length || !!lockTone) && "opacity-55"
                   )}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[14px] font-semibold">Send</div>
-                      <div className="mt-1 text-[11px] text-white/65">
-                        {selectedIds.length < 2 ? "Pick at least 2 letters" : "Check word + score"}
-                      </div>
-                    </div>
-                    <div className="text-white/55">→</div>
-                  </div>
+                  ⌫ Back
+                </button>
+
+                <button
+                  onClick={onClear}
+                  disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
+                  className={cx(
+                    "rounded-3xl border border-white/10 bg-white/5 px-4 py-3",
+                    "text-[13px] font-extrabold text-white/90",
+                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
+                    "hover:bg-white/8 active:scale-[0.98] touch-manipulation",
+                    (!selectedIds.length || !!lockTone) && "opacity-55"
+                  )}
+                >
+                  Clear
                 </button>
               </div>
 
-              {toast ? (
-                <div
-                  className={cx(
-                    "mt-3 rounded-2xl border p-3 text-[12px] text-white/90",
-                    toast.tone === "ok"
-                      ? "border-emerald-300/25 bg-emerald-500/12"
-                      : toast.tone === "bad"
-                      ? "border-rose-300/25 bg-rose-500/12"
-                      : "border-white/10 bg-white/5"
-                  )}
-                >
-                  <div className="font-semibold">{toast.title}</div>
-                  {toast.sub ? <div className="mt-0.5 text-white/70">{toast.sub}</div> : null}
+              <div className="mt-3 text-[11px] text-white/45">
+                Tip: longer words score more.
+              </div>
+            </div>
+          </Card>
+
+          {/* Found words card */}
+          <Card>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[14px] font-extrabold text-white/92">
+                  Found words
+                </div>
+                <div className="text-[11px] text-white/45">{found.length} total</div>
+              </div>
+
+              {found.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {found.slice(0, 40).map((w) => (
+                    <span
+                      key={w}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/85"
+                    >
+                      {w}
+                      <span className="text-white/45">+{pointsForLen(w.length)}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
+              )}
+
+              {phase === "done" ? (
+                <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4 text-[12px] text-white/85">
+                  {saving ? "Saving score…" : saveMsg ?? "Done."}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      onClick={resetToSetup}
+                      className={cx(
+                        "rounded-3xl border border-white/10 bg-white/5 px-4 py-3",
+                        "text-[13px] font-extrabold text-white/90",
+                        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
+                        "hover:bg-white/8 active:scale-[0.98] touch-manipulation"
+                      )}
+                    >
+                      New round
+                    </button>
+
+                    <Link
+                      href="/leaderboard"
+                      className={cx(
+                        "rounded-3xl border border-blue-300/18 bg-gradient-to-b from-blue-500/22 to-blue-500/10 px-4 py-3 text-center",
+                        "text-[13px] font-extrabold text-white/92",
+                        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
+                        "hover:-translate-y-[1px] hover:shadow-[0_0_55px_rgba(59,130,246,0.18)] active:scale-[0.98] touch-manipulation"
+                      )}
+                    >
+                      Leaderboard
+                    </Link>
+                  </div>
                 </div>
               ) : null}
+            </div>
+          </Card>
+        </section>
+
+        {/* ✅ Sticky HERO CTA:
+            - setup: Start
+            - playing: Send
+            - done: none
+        */}
+        {phase !== "done" ? (
+          <div
+            className="fixed left-0 right-0 bottom-0 z-[50]"
+            style={{
+              paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
+            }}
+          >
+            <div className="mx-auto max-w-md px-4">
+              <div className="pointer-events-none absolute inset-x-0 -top-10 h-10 bg-gradient-to-t from-slate-950/90 to-transparent" />
 
               {phase === "setup" ? (
-                <div className="mt-3">
-                  <button
-                    onClick={startRound}
-                    className={cx(
-                      "w-full rounded-[24px] border border-blue-300/25",
-                      "bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-5 py-4 text-left",
-                      "transition hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
-                      "active:scale-[0.98] touch-manipulation"
-                    )}
-                    disabled={!dict || !dictSet}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-[14px] font-semibold">{dict ? "Start" : "Loading…"}</div>
-                        <div className="mt-1 text-[11px] text-white/65">
-                          Letters are generated to have plenty of valid words.
-                        </div>
-                      </div>
-                      <div className="text-white/55">→</div>
-                    </div>
-                  </button>
-                </div>
-              ) : null}
+                <PrimaryCTA
+                  title={dict && dictSet ? "Start" : "Loading…"}
+                  subtitle="Letters are generated to have plenty of valid words."
+                  onClick={startRound}
+                  disabled={!dict || !dictSet}
+                  rightIcon="▶"
+                />
+              ) : (
+                <PrimaryCTA
+                  title="Send"
+                  subtitle={
+                    selectedIds.length < 2
+                      ? "Pick at least 2 letters"
+                      : "Check word + score"
+                  }
+                  onClick={submitSelected}
+                  disabled={selectedIds.length < 2 || !!lockTone}
+                  rightIcon="→"
+                />
+              )}
             </div>
           </div>
-        </section>
+        ) : null}
 
-        {/* Found words */}
-        <section className="mt-4 pb-6">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div className="text-[14px] font-extrabold text-white/92">
-                Found words ({found.length})
-              </div>
-              <div className="text-[11px] text-white/50">latest first</div>
-            </div>
-
-            {found.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {found.slice(0, 40).map((w) => (
-                  <span
-                    key={w}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/85"
-                  >
-                    {w}
-                    <span className="text-white/45">+{pointsForLen(w.length)}</span>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
-            )}
-
-            {phase === "done" ? (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-[12px] text-white/80">
-                {saving ? "Saving score…" : saveMsg ?? "Done."}
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    onClick={resetToSetup}
-                    className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
-                  >
-                    New round
-                  </button>
-                  <Link
-                    href="/leaderboard"
-                    className="rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/26 to-blue-500/10 px-4 py-3 text-center text-[13px] font-semibold text-white/92 transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)] active:scale-[0.98] touch-manipulation"
-                  >
-                    Leaderboard
-                  </Link>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <footer className="mt-auto pb-2 pt-4 text-center text-[11px] text-white/35">
+        <footer className="mt-auto pb-2 pt-6 text-center text-[11px] text-white/35">
           Quick • Hidden Word
         </footer>
       </div>
