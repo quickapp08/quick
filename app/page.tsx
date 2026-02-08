@@ -481,32 +481,32 @@ export default function HomePage() {
             {[
               {
                 t: "Word Quick",
-                d: "Pogađaj riječ što brže. Bodovi idu u total i leaderboard.",
+                d: "Guess the word as fast as possible. Points are added to your total and the leaderboard.",
                 i: "⌨️",
               },
               {
                 t: "Photo Quick",
-                d: "Isto kao Word Quick, ali s fotkama. Dostupno samo kad si prijavljen.",
+                d: "Same as Word Quick, but with photos. Get ready.",
                 i: "📸",
               },
               {
                 t: "Hidden Word",
-                d: "Poseban mode: riječi + score se broji kao ‘best’.",
+                d: "Special mode: words + score are counted as “best.”",
                 i: "🕵️",
               },
               {
                 t: "Fast Round",
-                d: "Brzi mode: igraš na vrijeme i gleda se best score.",
+                d: "Fast mode: you play against the clock, and the best score is recorded.",
                 i: "⚡",
               },
               {
                 t: "Together",
-                d: "Igraš u privatnim sobama s ekipom (rang i chat u sobi).",
+                d: "You play in private rooms with your crew (rank and chat in the room).",
                 i: "👥",
               },
               {
                 t: "Tournaments",
-                d: "Weekly / Monthly turniri. Kad počne — dođe obavijest (uskoro).",
+                d: "Weekly / Monthly tournaments. When they start — you’ll get a notification (coming soon).",
                 i: "🏟️",
               },
             ].map((x) => (
