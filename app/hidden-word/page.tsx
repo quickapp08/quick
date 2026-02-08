@@ -34,7 +34,6 @@ function msToClock(ms: number) {
 }
 
 function pointsForLen(n: number) {
-  // 1–3 => 1, 4–5 => 2, 6+ => 3
   if (n <= 3) return 1;
   if (n <= 5) return 2;
   return 3;
@@ -74,6 +73,15 @@ function mulberry32(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+function shuffleStringDeterministic(str: string, seedKey: string) {
+  const arr = str.split("");
+  const rand = mulberry32(hashToUint32(seedKey));
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.join("");
+}
 
 type DictWord = { word: string; len: number };
 
@@ -93,54 +101,27 @@ function unionLettersForWords(words: string[]) {
   return out;
 }
 
-function shuffleArrDeterministic<T>(arr: T[], seedKey: string) {
-  const rand = mulberry32(hashToUint32(seedKey));
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function shuffleStringDeterministic(str: string, seedKey: string) {
-  return shuffleArrDeterministic(str.split(""), seedKey).join("");
-}
-
-/**
- * Anti-obvious shuffle:
- * - shuffle letters
- * - then try to avoid forming any obvious 3+ chunk that is itself a dictionary word substring
- *   (cheap heuristic: avoid any 4-letter window that matches a real word)
- */
+// “Harder” shuffle to avoid obvious chunks at the start (east/ring etc.)
 function shuffleLettersHarder(
   letters: string,
   seedKey: string,
   dictSet: Set<string> | null
 ) {
-  if (!letters) return letters;
-
   let best = shuffleStringDeterministic(letters, seedKey);
   if (!dictSet) return best;
 
   const score = (s: string) => {
-    // penalty if any 4-letter window is a dictionary word
     let p = 0;
     for (let i = 0; i + 4 <= s.length; i++) {
       const chunk = s.slice(i, i + 4).toLowerCase();
       if (dictSet.has(chunk)) p += 2;
     }
-    // penalty if starts with common chunks like "east", "ring", etc (generic)
     const badStarts = ["east", "ring", "tion", "ment", "ness", "able", "ing"];
-    for (const b of badStarts) {
-      if (s.toLowerCase().startsWith(b)) p += 3;
-    }
+    for (const b of badStarts) if (s.toLowerCase().startsWith(b)) p += 3;
     return p;
   };
 
   let bestScore = score(best);
-
-  // try a few times, pick least "obvious"
   for (let k = 0; k < 18; k++) {
     const cand = shuffleStringDeterministic(letters, `${seedKey}:${k}`);
     const sc = score(cand);
@@ -150,7 +131,6 @@ function shuffleLettersHarder(
       if (bestScore === 0) break;
     }
   }
-
   return best;
 }
 
@@ -192,15 +172,16 @@ export default function HiddenWordPage() {
     };
   }, [router]);
 
-  // keyboard handling (prevents letters from being pushed off-screen)
-  const [kbPad, setKbPad] = useState(0);
+  // ✅ Keyboard spacer via CSS variable (does NOT push layout; only adds scroll room)
+  const [kbPx, setKbPx] = useState(0);
   useEffect(() => {
     const vv = (window as any).visualViewport as VisualViewport | undefined;
     if (!vv) return;
 
     const onResize = () => {
       const diff = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKbPad(diff);
+      setKbPx(diff);
+      document.documentElement.style.setProperty("--kb", `${diff}px`);
     };
 
     onResize();
@@ -229,7 +210,6 @@ export default function HiddenWordPage() {
 
   const loadDictionary = async () => {
     setDictErr(null);
-
     const { data, error } = await supabase
       .from("hidden_word_dictionary")
       .select("word,len")
@@ -271,8 +251,9 @@ export default function HiddenWordPage() {
 
   const [score, setScore] = useState(0);
 
-  // friendlier toasts (longer + clearer)
-  const [toast, setToast] = useState<{ text: string; tone: "ok" | "warn" | "bad" } | null>(null);
+  const [toast, setToast] = useState<{ text: string; tone: "ok" | "warn" | "bad" } | null>(
+    null
+  );
   const toastTimerRef = useRef<number | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -297,12 +278,19 @@ export default function HiddenWordPage() {
     };
   }, []);
 
-  // Generate letters (10–14) that guarantee >=10 dictionary words
+  // Ensure input stays in view when keyboard opens (but letters stay sticky)
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!kbPx) return;
+    window.setTimeout(() => {
+      inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 60);
+  }, [kbPx, phase]);
+
   const generateLettersGuaranteed = (seedKey: string) => {
     if (!dict || dict.length < 50) return { letters: "", guaranteedWords: [] as string[] };
 
     const rand = mulberry32(hashToUint32(seedKey));
-
     const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
     const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "apple";
 
@@ -314,15 +302,12 @@ export default function HiddenWordPage() {
       }
 
       let L = unionLettersForWords(base);
-
       while (L.length < 10) {
         const extra = pick();
         L = unionLettersForWords([...base, extra]);
       }
-
       if (L.length > 14) continue;
 
-      // HARDER shuffle to avoid obvious chunks (like EAST...)
       const mixed = shuffleLettersHarder(L.toUpperCase(), seedKey, dictSet).slice(0, 14);
 
       const map = countLetters(mixed);
@@ -332,14 +317,10 @@ export default function HiddenWordPage() {
         .filter((w) => canBuild(w, map));
 
       const uniquePossible = Array.from(new Set(possible));
-      if (uniquePossible.length >= 10) {
-        return { letters: mixed.toUpperCase(), guaranteedWords: base };
-      }
+      if (uniquePossible.length >= 10) return { letters: mixed.toUpperCase(), guaranteedWords: base };
     }
 
-    // fallback (should almost never happen if dictionary is decent)
-    const fallback = shuffleLettersHarder("EASTRINGLOW", seedKey, dictSet).toUpperCase();
-    return { letters: fallback, guaranteedWords: [] as string[] };
+    return { letters: shuffleLettersHarder("EASTRINGLOW", seedKey, dictSet).toUpperCase(), guaranteedWords: [] };
   };
 
   const startRound = () => {
@@ -383,11 +364,7 @@ export default function HiddenWordPage() {
         score,
       });
 
-      if (error) {
-        setSaveMsg("Score not saved (policy/table). Gameplay is OK.");
-      } else {
-        setSaveMsg("Score saved ✅");
-      }
+      setSaveMsg(error ? "Score not saved (policy/table). Gameplay is OK." : "Score saved ✅");
     } catch {
       setSaveMsg("Score not saved yet (DB not ready).");
     } finally {
@@ -416,20 +393,16 @@ export default function HiddenWordPage() {
       setInput("");
       return;
     }
-
     if (foundSet.has(word)) {
       showToast("Already found", "warn");
       setInput("");
       return;
     }
-
     if (!canBuild(word, lettersMap)) {
       showToast("Not possible with these letters", "bad");
       setInput("");
       return;
     }
-
-    // dictionary check (main issue you hit)
     if (!dictSet.has(word)) {
       showToast("Not in our dictionary (yet)", "bad");
       setInput("");
@@ -466,17 +439,14 @@ export default function HiddenWordPage() {
 
   const lettersGrid = useMemo(() => {
     const arr = letters ? letters.split("") : [];
-    // 14 max: show 7 + 7 like your screenshot
-    const first = arr.slice(0, 7);
-    const second = arr.slice(7, 14);
-    return { first, second };
+    return { first: arr.slice(0, 7), second: arr.slice(7, 14) };
   }, [letters]);
 
   if (!authReady || !userId) {
     return (
       <main
         className={cx(
-          "h-[100dvh] w-full overflow-hidden",
+          "min-h-[100svh] w-full",
           "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
         )}
         style={{
@@ -484,7 +454,7 @@ export default function HiddenWordPage() {
           paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
         }}
       >
-        <div className="mx-auto flex h-[100dvh] max-w-md flex-col px-4">
+        <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
           <header className="pt-2">
             <TopBar title="Hidden Word" />
             <h1 className="mt-5 text-2xl font-bold tracking-tight">Hidden Word</h1>
@@ -498,7 +468,7 @@ export default function HiddenWordPage() {
   return (
     <main
       className={cx(
-        "h-[100dvh] w-full overflow-hidden",
+        "min-h-[100svh] w-full overflow-x-hidden",
         "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
       )}
       style={{
@@ -506,10 +476,7 @@ export default function HiddenWordPage() {
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
-      <div
-        className="mx-auto flex h-[100dvh] max-w-md flex-col px-4 overflow-hidden"
-        style={{ paddingBottom: `calc(max(env(safe-area-inset-bottom), 18px) + ${kbPad}px)` }}
-      >
+      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
         <header className="pt-2">
           <TopBar title="Hidden Word" />
 
@@ -521,7 +488,7 @@ export default function HiddenWordPage() {
                   ? "Find as many words as you can from the letters."
                   : phase === "playing"
                   ? "Type a word and hit Enter."
-                  : "Round finished — score saved."}
+                  : "Round finished."}
               </div>
             </div>
 
@@ -550,56 +517,63 @@ export default function HiddenWordPage() {
           ) : null}
         </header>
 
-        {/* only this scrolls, header stays */}
-        <section className="mt-4 space-y-3 flex-1 overflow-y-auto overscroll-contain pb-4">
-          {/* Main card */}
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-[12px] text-white/65">Score</div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[12px] font-semibold text-white/90">
-                  🧩 {score} pts
-                </div>
-              </div>
-
-              <div className="mt-4 text-[12px] text-white/65">Letters</div>
-
-              <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/35 p-3">
-                <div className="grid grid-cols-7 gap-2">
-                  {(lettersGrid.first.length ? lettersGrid.first : Array.from({ length: 7 }).map(() => "•")).map(
-                    (ch, idx) => (
-                      <div
-                        key={`a_${idx}`}
-                        className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
-                      >
-                        {ch}
-                      </div>
-                    )
-                  )}
+        {/* Scroll area only */}
+        <section
+          className="mt-4 flex-1 overflow-y-auto overscroll-contain space-y-3 pb-4"
+          style={{
+            // add extra scroll room for keyboard, but DON'T push the whole layout
+            paddingBottom: `calc(16px + max(env(safe-area-inset-bottom), 18px) + var(--kb, 0px))`,
+          }}
+        >
+          {/* Sticky letters card (always visible while typing) */}
+          <div className="sticky top-0 z-10 pt-1">
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-[12px] text-white/65">Score</div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[12px] font-semibold text-white/90">
+                    🧩 {score} pts
+                  </div>
                 </div>
 
-                <div className="mt-2 grid grid-cols-7 gap-2">
-                  {(lettersGrid.second.length ? lettersGrid.second : Array.from({ length: 7 }).map(() => "•")).map(
-                    (ch, idx) => (
-                      <div
-                        key={`b_${idx}`}
-                        className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
-                      >
-                        {ch}
-                      </div>
-                    )
-                  )}
-                </div>
+                <div className="mt-4 text-[12px] text-white/65">Letters</div>
 
-                <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
-                  <div>1–3: +1 • 4–5: +2 • 6+: +3</div>
-                  <div>Found: {found.length}</div>
+                <div className="mt-3 rounded-[24px] border border-white/10 bg-slate-950/35 p-3">
+                  <div className="grid grid-cols-7 gap-2">
+                    {(lettersGrid.first.length ? lettersGrid.first : Array.from({ length: 7 }).map(() => "•")).map(
+                      (ch, idx) => (
+                        <div
+                          key={`a_${idx}`}
+                          className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
+                        >
+                          {ch}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-7 gap-2">
+                    {(lettersGrid.second.length ? lettersGrid.second : Array.from({ length: 7 }).map(() => "•")).map(
+                      (ch, idx) => (
+                        <div
+                          key={`b_${idx}`}
+                          className="grid aspect-square place-items-center rounded-2xl border border-white/10 bg-white/5 text-[18px] font-extrabold text-white/95 shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
+                        >
+                          {ch}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
+                    <div>1–3: +1 • 4–5: +2 • 6+: +3</div>
+                    <div>Found: {found.length}</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Setup */}
           {phase === "setup" ? (
             <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
               <div className="p-4">
@@ -626,15 +600,10 @@ export default function HiddenWordPage() {
                     <div className="text-white/60 text-[18px]">›</div>
                   </div>
                 </button>
-
-                <div className="mt-3 text-[11px] text-white/45">
-                  Tip: You can’t use a letter more times than it appears.
-                </div>
               </div>
             </div>
           ) : null}
 
-          {/* Playing */}
           {phase === "playing" ? (
             <>
               <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
@@ -717,18 +686,11 @@ export default function HiddenWordPage() {
                   ) : (
                     <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
                   )}
-
-                  {found.length > 28 ? (
-                    <div className="mt-2 text-[11px] text-white/45">
-                      Showing first 28 to keep UI clean.
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </>
           ) : null}
 
-          {/* Done */}
           {phase === "done" ? (
             <div className="rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_22px_70px_rgba(0,0,0,0.46)] backdrop-blur-[12px]">
               <div className="p-4">
