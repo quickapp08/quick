@@ -119,7 +119,6 @@ function pickWordDeterministic(seed: string, avoid?: string) {
   const rand = mulberry32(hashToUint32(seed));
   let w =
     FALLBACK_WORDS[Math.floor(rand() * FALLBACK_WORDS.length)] || "street";
-  // small avoid loop to not repeat instantly
   if (avoid && w === avoid) {
     w =
       FALLBACK_WORDS[(FALLBACK_WORDS.indexOf(w) + 7) % FALLBACK_WORDS.length] ||
@@ -141,7 +140,8 @@ function StatusPill({ phase }: { phase: Phase }) {
       : "border-white/12 bg-white/6 text-white/85";
 
   const icon = phase === "playing" ? "🟢" : phase === "done" ? "🏁" : "⚡";
-  const label = phase === "playing" ? "LIVE" : phase === "done" ? "FINISHED" : "READY";
+  const label =
+    phase === "playing" ? "LIVE" : phase === "done" ? "FINISHED" : "READY";
 
   return (
     <div
@@ -389,7 +389,7 @@ export default function FastRoundPage() {
   const [lenSec, setLenSec] = useState<RoundLen>(30);
 
   // gameplay state
-  const [roundKey, setRoundKey] = useState<string>(""); // unique id for this run
+  const [roundKey, setRoundKey] = useState<string>("");
   const [startMs, setStartMs] = useState<number>(0);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [score, setScore] = useState<number>(0);
@@ -403,7 +403,6 @@ export default function FastRoundPage() {
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // ticker
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 100);
     return () => window.clearInterval(id);
@@ -449,7 +448,6 @@ export default function FastRoundPage() {
 
   const endRound = async () => {
     setPhase("done");
-
     setSaving(true);
     setSaveMsg(null);
 
@@ -474,7 +472,6 @@ export default function FastRoundPage() {
     }
   };
 
-  // auto-end when timer hits 0
   useEffect(() => {
     if (phase !== "playing") return;
     if (msLeft > 0) return;
@@ -498,7 +495,6 @@ export default function FastRoundPage() {
       const nextScore = score + 1;
       setScore(nextScore);
       genNextWord(nextScore, word);
-      return;
     }
   };
 
@@ -565,7 +561,7 @@ export default function FastRoundPage() {
       </div>
 
       <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* Header (NO CARD) */}
+        {/* Header */}
         <header className="pt-2">
           <TopBar title="Fast Round" />
 
@@ -593,7 +589,11 @@ export default function FastRoundPage() {
 
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-extrabold text-white/90">
                   <span className="text-[13px] leading-none">⏱</span>
-                  {phase === "playing" ? timeLabel : lenSec === 30 ? "0:30" : "1:00"}
+                  {phase === "playing"
+                    ? timeLabel
+                    : lenSec === 30
+                    ? "0:30"
+                    : "1:00"}
                 </div>
               </div>
             </div>
@@ -604,8 +604,8 @@ export default function FastRoundPage() {
           </div>
         </header>
 
+        {/* add bottom padding so content never hides under sticky CTA */}
         <section className="mt-5 space-y-3 pb-28">
-          {/* Setup controls (ONE main card) */}
           {phase === "setup" ? (
             <Card>
               <div className="p-4">
@@ -638,7 +638,6 @@ export default function FastRoundPage() {
             </Card>
           ) : null}
 
-          {/* Playing UI */}
           {phase === "playing" ? (
             <>
               <ScrambleBoard text={scrambled} phase={phase} />
@@ -684,20 +683,11 @@ export default function FastRoundPage() {
                       Send
                     </button>
                   </div>
-
-                  {/* keep but subtle */}
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="text-[11px] text-white/45">Hidden answer</div>
-                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/75">
-                      {word || "—"}
-                    </div>
-                  </div>
                 </div>
               </Card>
             </>
           ) : null}
 
-          {/* Done screen */}
           {phase === "done" ? (
             <Card>
               <div className="p-4">
@@ -755,7 +745,7 @@ export default function FastRoundPage() {
             }}
           >
             <div className="mx-auto max-w-md px-4">
-              <div className="pointer-events-none absolute inset-x-0 -top-10 h-10 bg-gradient-to-t from-slate-950/90 to-transparent" />
+              {/* ✅ removed the gradient strip that created the “background behind CTA” */}
               <PrimaryCTA
                 title="Start"
                 subtitle="First word appears instantly"
