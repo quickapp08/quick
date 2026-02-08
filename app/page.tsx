@@ -244,6 +244,9 @@ export default function HomePage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
 
+  // ✅ new: avatar url for the home card (from profiles)
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
 
@@ -271,6 +274,7 @@ export default function HomePage() {
       setMsg(null);
     } else {
       setMyStatus(null);
+      setMyAvatarUrl(null);
       setScreen("welcome");
     }
   }, [user]);
@@ -304,12 +308,43 @@ export default function HomePage() {
     };
   }, [user]);
 
+  // ✅ new: load my avatar (doesn't touch your status logic)
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMyAvatar() {
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!alive) return;
+      if (error) {
+        setMyAvatarUrl(null);
+        return;
+      }
+      setMyAvatarUrl((data?.avatar_url ?? null) as string | null);
+    }
+
+    loadMyAvatar();
+    const t = setInterval(loadMyAvatar, 20000);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [user]);
+
   const logout = async () => {
     await supabase.auth.signOut();
     router.refresh();
     setScreen("welcome");
     setMsg(null);
     setMyStatus(null);
+    setMyAvatarUrl(null);
   };
 
   const openPhoto = () => {
@@ -346,12 +381,7 @@ export default function HomePage() {
             </TopPill>
 
             {user ? (
-              <IconBtn
-                icon="🔔"
-                badge={0}
-                ariaLabel="Notifications"
-                onClick={() => {}}
-              />
+              <IconBtn icon="🔔" badge={0} ariaLabel="Notifications" onClick={() => {}} />
             ) : (
               <div className="h-10 w-10" />
             )}
@@ -382,15 +412,25 @@ export default function HomePage() {
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         <MiniChip icon="🌍" text={`#${myOk?.world_rank ?? "—"}`} />
-                        <MiniChip
-                          icon="⚡"
-                          text={`${myOk?.total_points ?? 0} pts`}
-                        />
+                        <MiniChip icon="⚡" text={`${myOk?.total_points ?? 0} pts`} />
                       </div>
                     </div>
 
-                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
-                      <span className="text-[18px]">👤</span>
+                    {/* ✅ Avatar square (was 👤) */}
+                    <div className="relative grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
+                      {myAvatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={myAvatarUrl}
+                          alt="Avatar"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <span className="text-[18px]">👤</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -420,9 +460,7 @@ export default function HomePage() {
                     Login
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">
-                  ›
-                </div>
+                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
               </Link>
 
               <Link
@@ -443,9 +481,7 @@ export default function HomePage() {
                     Register
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">
-                  ›
-                </div>
+                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
               </Link>
 
               {msg ? (
@@ -456,71 +492,27 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              {/* ✅ ONLY CHANGE: add Hidden Word tile */}
               <div className="grid grid-cols-2 gap-3">
-                <ModeTile
-                  title="Word Quick"
-                  icon="⌨️"
-                  href="/quick-word"
-                  tone="blue"
-                />
+                <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
-                  <ModeTile
-                    title="Photo Quick"
-                    icon="📸"
-                    onClick={() => router.push("/quick-photo")}
-                    tone="blue"
-                  />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} tone="dark" />
                 ) : (
-                  <ModeTile
-                    title="Photo Quick"
-                    icon="📸"
-                    onClick={openPhoto}
-                    tone="dark"
-                  />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
                 )}
 
-                <ModeTile
-                  title="Hidden Word"
-                  icon="🕵️"
-                  href="/hidden-word"
-                  tone="blue"
-                />
-
-                <ModeTile
-                  title="Fast Round"
-                  icon="⚡"
-                  href="/fast-round"
-                  tone="blue"
-                />
+                <ModeTile title="Hidden Word" icon="🕵️" href="/hidden-word" tone="blue" />
+                <ModeTile title="Fast Round" icon="⚡" href="/fast-round" tone="blue" />
               </div>
 
-              {/* NO locked badge; only muted look */}
               <div className="grid grid-cols-2 gap-3">
-                <CompactTile
-                  title="Together"
-                  icon="👥"
-                  onClick={() => router.push("/create-own")}
-                />
-                <CompactTile
-                  title="Tournaments"
-                  icon="🏟️"
-                  onClick={() => router.push("/tournaments")}
-                />
+                <CompactTile title="Together" icon="👥" onClick={() => router.push("/create-own")} />
+                <CompactTile title="Tournaments" icon="🏟️" onClick={() => router.push("/tournaments")} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <IconOnlyLink
-                    href="/leaderboard"
-                    icon="🏆"
-                    ariaLabel="Leaderboard"
-                  />
-                  <IconOnlyLink
-                    href="/settings"
-                    icon="⚙️"
-                    ariaLabel="Settings"
-                  />
+                  <IconOnlyLink href="/leaderboard" icon="🏆" ariaLabel="Leaderboard" />
+                  <IconOnlyLink href="/settings" icon="⚙️" ariaLabel="Settings" />
                 </div>
 
                 <button

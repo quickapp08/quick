@@ -50,6 +50,12 @@ function rankTone(rank: string) {
   return "border-white/12 bg-white/6 text-white/80";
 }
 
+/** ✅ 8 predefiniranih avatara (local) */
+const AVATARS: Array<{ id: number; src: string }> = Array.from({ length: 8 }).map((_, idx) => {
+  const n = String(idx + 1).padStart(2, "0");
+  return { id: idx + 1, src: `/avatars/a${n}.png` };
+});
+
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -142,6 +148,11 @@ export default function ProfilePage() {
 
   const avatarPreview = (avatarUrl || profile?.avatar_url || "").trim();
 
+  const selectedAvatarIsPreset = useMemo(() => {
+    const a = avatarPreview;
+    return !!a && AVATARS.some((x) => x.src === a);
+  }, [avatarPreview]);
+
   return (
     <main
       className={cx(
@@ -159,7 +170,7 @@ export default function ProfilePage() {
           <div className="mt-4">
             <h1 className="text-[22px] font-bold tracking-tight">Profile</h1>
             <p className="mt-1 text-[12px] leading-relaxed text-white/60">
-              Nickname i bio se prikazuju na leaderboardu.
+              Nickname, bio i avatar se prikazuju na leaderboardu.
             </p>
           </div>
         </header>
@@ -183,7 +194,6 @@ export default function ProfilePage() {
                     alt="Avatar"
                     className="h-full w-full object-cover"
                     onError={(e) => {
-                      // fallback to blank without changing logic/state
                       (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
@@ -197,7 +207,7 @@ export default function ProfilePage() {
               <div className="min-w-0 flex-1">
                 <div className="text-[12px] text-white/65">Status</div>
                 <div className="mt-0.5 truncate text-[15px] font-semibold text-white/92">
-                  {loading ? "Loading…" : (profile?.username || "No nickname yet")}
+                  {loading ? "Loading…" : profile?.username || "No nickname yet"}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <span
@@ -226,6 +236,61 @@ export default function ProfilePage() {
               ) : (
                 <>Username change time not set (OK).</>
               )}
+            </div>
+          </div>
+
+          {/* AVATAR PICKER CARD (8 avatars) */}
+          <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[13px] font-semibold text-white/90">Choose avatar</div>
+                <div className="mt-0.5 text-[11px] text-white/55">
+                  8 presets • stored as avatar_url.
+                </div>
+              </div>
+              <div
+                className={cx(
+                  "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  selectedAvatarIsPreset
+                    ? "border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
+                    : "border-white/12 bg-white/6 text-white/70"
+                )}
+              >
+                {selectedAvatarIsPreset ? "Selected" : "Custom / none"}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {AVATARS.map((a) => {
+                const active = avatarPreview === a.src;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    disabled={loading || saving}
+                    onClick={() => setAvatarUrl(a.src)}
+                    className={cx(
+                      "relative aspect-square w-full overflow-hidden rounded-2xl border transition active:scale-[0.98] touch-manipulation",
+                      active
+                        ? "border-blue-300/30 bg-blue-500/12 shadow-[0_0_35px_rgba(59,130,246,0.20)]"
+                        : "border-white/10 bg-white/5 hover:bg-white/8"
+                    )}
+                    aria-label={`Select avatar ${a.id}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.src} alt="" className="h-full w-full object-cover" />
+                    {active ? (
+                      <span className="absolute bottom-1 right-1 grid h-5 w-5 place-items-center rounded-full border border-white/15 bg-blue-500/20 text-[11px] font-extrabold">
+                        ✓
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-2 text-[11px] text-white/45">
+              Putanja: <span className="text-white/70">/public/avatars/a01.png → /avatars/a01.png</span>
             </div>
           </div>
 
@@ -276,23 +341,31 @@ export default function ProfilePage() {
                 <div className="mt-1 text-[11px] text-white/45">Tip: 1–2 rečenice je najbolje.</div>
               </label>
 
-              <label className="block">
-                <div className="mb-1 text-[12px] font-medium text-white/70">Avatar URL</div>
-                <input
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://…"
-                  disabled={loading || saving}
-                  className={cx(
-                    "w-full rounded-2xl border px-4 py-3 text-[15px] outline-none",
-                    "border-white/12 bg-black/20 text-white placeholder:text-white/35",
-                    "focus:border-white/25 focus:bg-black/30 focus:ring-2 focus:ring-blue-400/40"
-                  )}
-                />
-                <div className="mt-1 text-[11px] text-white/45">
-                  Works best with square images (1:1).
+              {/* Advanced (optional) - i dalje možeš upisat custom url */}
+              <details className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-semibold text-white/75">Advanced</div>
+                    <div className="text-white/40">▾</div>
+                  </div>
+                </summary>
+
+                <div className="mt-3">
+                  <div className="mb-1 text-[12px] font-medium text-white/70">Avatar URL</div>
+                  <input
+                    value={avatarUrl}
+                    onChange={(e) => setAvatarUrl(e.target.value)}
+                    placeholder="https://… ili /avatars/a01.png"
+                    disabled={loading || saving}
+                    className={cx(
+                      "w-full rounded-2xl border px-4 py-3 text-[15px] outline-none",
+                      "border-white/12 bg-black/20 text-white placeholder:text-white/35",
+                      "focus:border-white/25 focus:bg-black/30 focus:ring-2 focus:ring-blue-400/40"
+                    )}
+                  />
+                  <div className="mt-1 text-[11px] text-white/45">Best: square (1:1).</div>
                 </div>
-              </label>
+              </details>
             </div>
 
             <button

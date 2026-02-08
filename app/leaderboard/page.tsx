@@ -40,24 +40,58 @@ function TopBar({ title }: { title: string }) {
   );
 }
 
-function Medal({ place }: { place: number }) {
+function MedalMini({ place }: { place: number }) {
   if (place === 1) return <span aria-hidden="true">🥇</span>;
   if (place === 2) return <span aria-hidden="true">🥈</span>;
   if (place === 3) return <span aria-hidden="true">🥉</span>;
-  return <span className="text-white/55" aria-hidden="true">#{place}</span>;
+  return null;
 }
 
-function PlaceBadge({ place }: { place: number }) {
+function AvatarBadge({
+  place,
+  url,
+  fallbackLetter,
+}: {
+  place: number;
+  url?: string | null;
+  fallbackLetter: string;
+}) {
   const isTop = place <= 3;
   return (
-    <div
-      className={cx(
-        "grid h-10 w-10 place-items-center rounded-2xl border text-[13px] font-extrabold",
-        isTop ? "border-blue-300/25 bg-blue-500/12 text-white" : "border-white/12 bg-white/5 text-white/80"
+    <div className="relative h-10 w-10 shrink-0">
+      <div
+        className={cx(
+          "h-10 w-10 overflow-hidden rounded-2xl border bg-white/5",
+          isTop ? "border-blue-300/22 bg-blue-500/10" : "border-white/12"
+        )}
+      >
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt="Avatar"
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        ) : (
+          <div className="grid h-full w-full place-items-center text-[13px] font-extrabold text-white/75">
+            {fallbackLetter}
+          </div>
+        )}
+      </div>
+
+      {/* Medal overlay (top 3 only) */}
+      {isTop ? (
+        <div className="absolute -right-1 -bottom-1 grid h-5 w-5 place-items-center rounded-full border border-white/12 bg-slate-950/55 text-[11px]">
+          <MedalMini place={place} />
+        </div>
+      ) : (
+        <div className="absolute -right-1 -bottom-1 grid h-5 min-w-[20px] place-items-center rounded-full border border-white/12 bg-slate-950/55 px-1 text-[10px] font-extrabold text-white/75">
+          {place}
+        </div>
       )}
-      aria-label={`Place ${place}`}
-    >
-      <Medal place={place} />
     </div>
   );
 }
@@ -188,10 +222,12 @@ export default function LeaderboardPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [myRank, setMyRank] = useState<{ place: number; scoreLabel: string; subLabel?: string } | null>(null);
 
+  // ✅ new: avatar map by user_id (no RPC changes)
+  const [avatarMap, setAvatarMap] = useState<Record<string, string | null>>({});
+
   const isHidden = mode === "hidden";
   const isFast = mode === "fast";
 
-  // Hidden + Fast: world only (za sad)
   useEffect(() => {
     if ((isHidden || isFast) && scope !== "world") setScope("world");
   }, [isHidden, isFast, scope]);
@@ -229,7 +265,6 @@ export default function LeaderboardPage() {
     setMsg(null);
 
     try {
-      // fetch leaderboard rows
       if (isHidden) {
         const { data, error } = await supabase.rpc("get_hidden_leaderboard", { p_limit: limit });
         if (error) throw error;
@@ -270,7 +305,6 @@ export default function LeaderboardPage() {
         setRows((data ?? []) as RowWP[]);
       }
 
-      // fetch MY rank (if logged in)
       if (userId) {
         if (isHidden) {
           const { data, error } = await supabase.rpc("get_my_rank_hidden");
@@ -282,9 +316,7 @@ export default function LeaderboardPage() {
               scoreLabel: `${Number(r.best_score ?? 0)} score`,
               subLabel: `${Number(r.best_words_count ?? 0)} words`,
             });
-          } else {
-            setMyRank(null);
-          }
+          } else setMyRank(null);
         } else if (isFast) {
           const { data, error } = await supabase.rpc("get_my_rank_fast", { p_duration_sec: Number(fastDur) });
           if (error) throw error;
@@ -295,9 +327,7 @@ export default function LeaderboardPage() {
               scoreLabel: `${Number(r.best_score ?? 0)} score`,
               subLabel: `${Number(r.duration_sec ?? Number(fastDur))}s`,
             });
-          } else {
-            setMyRank(null);
-          }
+          } else setMyRank(null);
         } else {
           const { data, error } = await supabase.rpc("get_my_rank_word_photo", {
             p_mode: mode,
@@ -313,9 +343,7 @@ export default function LeaderboardPage() {
               scoreLabel: `${pts} pts`,
               subLabel: `Rank: ${getRank(pts)}`,
             });
-          } else {
-            setMyRank(null);
-          }
+          } else setMyRank(null);
         }
       } else {
         setMyRank(null);
@@ -329,11 +357,45 @@ export default function LeaderboardPage() {
     }
   };
 
-  // refetch on changes
   useEffect(() => {
     fetchBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, scope, region, fastDur, limit, userId]);
+
+  // ✅ new: fetch avatars for current rows (safe + minimal)
+  useEffect(() => {
+    let alive = true;
+
+    async function loadAvatars() {
+      const ids = Array.from(new Set(rows.map((r) => r.user_id))).filter(Boolean);
+      if (ids.length === 0) {
+        setAvatarMap({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, avatar_url")
+        .in("user_id", ids);
+
+      if (!alive) return;
+      if (error) {
+        // don't break leaderboard if avatars fail
+        return;
+      }
+
+      const map: Record<string, string | null> = {};
+      for (const p of data ?? []) {
+        map[String((p as any).user_id)] = ((p as any).avatar_url ?? null) as string | null;
+      }
+      setAvatarMap(map);
+    }
+
+    loadAvatars();
+    return () => {
+      alive = false;
+    };
+  }, [rows]);
 
   const canLoadMore = limit < 100;
 
@@ -375,7 +437,6 @@ export default function LeaderboardPage() {
               </div>
             </div>
 
-            {/* YOUR RANK */}
             <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/25 p-3">
               {!userId ? (
                 <div className="text-[12px] text-white/70">
@@ -471,9 +532,7 @@ export default function LeaderboardPage() {
               </button>
 
               <button
-                onClick={() => {
-                  resetLimit();
-                }}
+                onClick={() => resetLimit()}
                 className={cx(
                   "rounded-[28px] border border-white/10 bg-white/5 px-5 py-4 text-left transition",
                   "hover:bg-white/8 active:scale-[0.98] touch-manipulation"
@@ -530,6 +589,9 @@ export default function LeaderboardPage() {
                     ? { title: "Best", val: (r as RowFast).best_score, icon: "⚡" }
                     : { title: "Points", val: (r as RowWP).points_total, icon: "⚡" };
 
+                const avatarUrl = avatarMap[r.user_id] ?? null;
+                const fallbackLetter = (r.username?.trim()?.[0] ?? "P").toUpperCase();
+
                 return (
                   <div
                     key={`${r.user_id}-${r.place}`}
@@ -540,7 +602,12 @@ export default function LeaderboardPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <PlaceBadge place={r.place} />
+                        {/* ✅ avatar left */}
+                        <AvatarBadge
+                          place={r.place}
+                          url={avatarUrl}
+                          fallbackLetter={fallbackLetter}
+                        />
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
