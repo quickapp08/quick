@@ -2,29 +2,41 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
-type Mode = "word" | "photo";
+type GroupMode = "word" | "photo";
+type DuelMode = "fast_round" | "hidden_word";
+type RoomType = "group" | "duel";
+
 type Tab = "rooms" | "create" | "join";
 
 type MyRoom = {
   room_id: string;
   code: string;
-  mode: Mode;
+  mode: GroupMode; // for group rooms
   target_points: number;
   created_at: string;
+  // new (may be null for old rooms)
+  room_type?: RoomType;
+  duel_mode?: DuelMode | null;
 };
 
 type RoomInfo = {
   room_id: string;
   code: string;
-  mode: "word" | "photo";
+  mode: GroupMode;
   target_points: number;
   current_round: number;
   is_active: boolean;
   winner_user_id: string | null;
   winner_username: string | null;
   is_owner: boolean;
+
+  room_type?: RoomType;
+  duel_mode?: DuelMode | null;
+  game_seed?: string | null;
+  game_start_at?: string | null;
 };
 
 type RoomRow = {
@@ -69,7 +81,7 @@ function Segmented({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: Array<{ value: string; label: string; icon: string }>;
+  options: Array<{ value: string; label: string; icon: string; hint?: string }>;
   cols?: 2 | 3;
 }) {
   return (
@@ -108,7 +120,7 @@ function Segmented({
                 <div className="min-w-0">
                   <div className="text-[13px] font-semibold text-white/95">{o.label}</div>
                   <div className={cx("text-[11px]", active ? "text-white/65" : "text-white/45")}>
-                    {active ? "Selected" : "Tap to switch"}
+                    {active ? "Selected" : o.hint ?? "Tap to switch"}
                   </div>
                 </div>
               </div>
@@ -181,6 +193,8 @@ function Card({
 }
 
 export default function CreateOwnPage() {
+  const router = useRouter();
+
   const [tab, setTab] = useState<Tab>("rooms");
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -196,9 +210,16 @@ export default function CreateOwnPage() {
   const [roomLoading, setRoomLoading] = useState(false);
   const [roomMsg, setRoomMsg] = useState<string | null>(null);
 
-  // Create (key-only)
-  const [createMode, setCreateMode] = useState<Mode>("word");
+  // Create
+  const [createRoomType, setCreateRoomType] = useState<RoomType>("group");
+
+  // Group create
+  const [createMode, setCreateMode] = useState<GroupMode>("word");
   const [targetPoints, setTargetPoints] = useState<number>(1000);
+
+  // Duel create
+  const [createDuelMode, setCreateDuelMode] = useState<DuelMode>("fast_round");
+
   const [createLoading, setCreateLoading] = useState(false);
   const [createMsg, setCreateMsg] = useState<string | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
@@ -213,9 +234,17 @@ export default function CreateOwnPage() {
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Room actions
+  // Actions
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Duel state
+  const [duelReadyMine, setDuelReadyMine] = useState(false);
+  const [duelReadyOther, setDuelReadyOther] = useState(false);
+  const [duelStartPayload, setDuelStartPayload] = useState<{ seed: string; startAt: string; duelMode: DuelMode } | null>(
+    null
+  );
+  const [duelStatusMsg, setDuelStatusMsg] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -241,6 +270,7 @@ export default function CreateOwnPage() {
       return;
     }
 
+    // NOTE: stari RPC možda ne vraća room_type/duel_mode — zato je optional
     setMyRooms((data ?? []) as MyRoom[]);
     setRoomsLoading(false);
   };
@@ -250,12 +280,47 @@ export default function CreateOwnPage() {
     if (!error) setRoomInfo(((data ?? [])[0] ?? null) as RoomInfo | null);
   };
 
+  const loadDuelState = async (roomId: string) => {
+    setDuelStatusMsg(null);
+
+    const { data, error } = await supabase.rpc("get_duel_state", { p_room_id: roomId });
+    if (error) {
+      setDuelStatusMsg(error.message);
+      return;
+    }
+
+    const ok = (data as any)?.ok;
+    if (!ok) {
+      setDuelStatusMsg((data as any)?.error ?? "Failed to load duel state");
+      return;
+    }
+
+    const room = (data as any)?.room ?? {};
+    const ready = ((data as any)?.ready ?? []) as Array<{ user_id: string; is_ready: boolean }>;
+
+    const mine = !!userId && ready.find((x) => x.user_id === userId)?.is_ready;
+    const other = ready.find((x) => x.user_id !== userId)?.is_ready;
+
+    setDuelReadyMine(!!mine);
+    setDuelReadyOther(!!other);
+
+    if (room?.seed && room?.start_at && room?.duel_mode) {
+      setDuelStartPayload({ seed: room.seed, startAt: room.start_at, duelMode: room.duel_mode });
+    } else {
+      setDuelStartPayload(null);
+    }
+  };
+
   const openRoom = async (room: MyRoom) => {
     setActiveRoom(room);
     setRoomLoading(true);
     setRoomMsg(null);
     setChatError(null);
     setActionMsg(null);
+    setDuelStatusMsg(null);
+    setDuelStartPayload(null);
+    setDuelReadyMine(false);
+    setDuelReadyOther(false);
 
     await loadRoomInfo(room.room_id);
 
@@ -280,6 +345,10 @@ export default function CreateOwnPage() {
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
 
+    // If duel room: load duel state too
+    const isDuel = (room.room_type ?? "group") === "duel";
+    if (isDuel) await loadDuelState(room.room_id);
+
     setRoomLoading(false);
   };
 
@@ -295,6 +364,9 @@ export default function CreateOwnPage() {
 
     if (!lb.error) setRoomBoard((lb.data ?? []) as RoomRow[]);
     if (!msgs.error) setRoomMsgs(([...(msgs.data ?? [])] as MsgRow[]).reverse());
+
+    const isDuel = (activeRoom.room_type ?? "group") === "duel";
+    if (isDuel) await loadDuelState(activeRoom.room_id);
   };
 
   const createRoom = async () => {
@@ -302,11 +374,38 @@ export default function CreateOwnPage() {
     setCreateMsg(null);
     setCreatedCode(null);
 
-    const { data, error } = await supabase.rpc("create_room", {
-      p_mode: createMode,
-      p_target_points: targetPoints,
-      p_invite_emails: [],
-    });
+    // GROUP
+    if (createRoomType === "group") {
+      const { data, error } = await supabase.rpc("create_room", {
+        p_mode: createMode,
+        p_target_points: targetPoints,
+        p_invite_emails: [],
+      });
+
+      if (error) {
+        setCreateMsg(error.message);
+        setCreateLoading(false);
+        return;
+      }
+
+      const ok = (data as any)?.ok;
+      if (!ok) {
+        setCreateMsg((data as any)?.error ?? "Create failed");
+        setCreateLoading(false);
+        return;
+      }
+
+      const code = (data as any)?.code as string | undefined;
+      if (code) setCreatedCode(code);
+
+      await loadMyRooms();
+      setTab("rooms");
+      setCreateLoading(false);
+      return;
+    }
+
+    // DUEL
+    const { data, error } = await supabase.rpc("create_duel_room", { p_duel_mode: createDuelMode });
 
     if (error) {
       setCreateMsg(error.message);
@@ -333,6 +432,26 @@ export default function CreateOwnPage() {
     setJoinLoading(true);
     setJoinMsg(null);
 
+    // prvo probaj duel join; ako nije duel, fallback na group join
+    const duelAttempt = await supabase.rpc("join_duel_room", { p_code: joinCode });
+    if (!duelAttempt.error) {
+      const ok = (duelAttempt.data as any)?.ok;
+      if (ok) {
+        await loadMyRooms();
+        setTab("rooms");
+        setJoinLoading(false);
+        return;
+      }
+      // ako nije duel room, probamo group join
+      const errCode = (duelAttempt.data as any)?.error;
+      if (errCode && errCode !== "not_a_duel_room") {
+        setJoinMsg(errCode);
+        setJoinLoading(false);
+        return;
+      }
+    }
+
+    // group join
     const { data, error } = await supabase.rpc("join_room", { p_code: joinCode });
 
     if (error) {
@@ -390,6 +509,64 @@ export default function CreateOwnPage() {
     setChatSending(false);
   };
 
+  const setReady = async (ready: boolean) => {
+    if (!activeRoom) return;
+    setDuelStatusMsg(null);
+
+    const { data, error } = await supabase.rpc("set_duel_ready", {
+      p_room_id: activeRoom.room_id,
+      p_ready: ready,
+    });
+
+    if (error) {
+      setDuelStatusMsg(error.message);
+      return;
+    }
+    if (!(data as any)?.ok) {
+      setDuelStatusMsg((data as any)?.error ?? "Failed to set ready");
+      return;
+    }
+
+    await loadDuelState(activeRoom.room_id);
+  };
+
+  const tryStart = async () => {
+    if (!activeRoom) return;
+    setDuelStatusMsg(null);
+
+    const { data, error } = await supabase.rpc("try_start_duel", { p_room_id: activeRoom.room_id });
+    if (error) {
+      setDuelStatusMsg(error.message);
+      return;
+    }
+    if (!(data as any)?.ok) {
+      setDuelStatusMsg((data as any)?.error ?? "Not ready");
+      return;
+    }
+
+    const duelMode = (data as any)?.duel_mode as DuelMode;
+    const seed = (data as any)?.seed as string;
+    const startAt = (data as any)?.start_at as string;
+
+    setDuelStartPayload({ duelMode, seed, startAt });
+  };
+
+  const goToDuelGame = (payload: { duelMode: DuelMode; seed: string; startAt: string }) => {
+    if (!activeRoom) return;
+
+    const base =
+      payload.duelMode === "fast_round"
+        ? "/fast-round"
+        : "/hidden-word";
+
+    // game pages će čitati room/seed/start
+    router.push(
+      `${base}?room=${encodeURIComponent(activeRoom.room_id)}&seed=${encodeURIComponent(
+        payload.seed
+      )}&start=${encodeURIComponent(payload.startAt)}`
+    );
+  };
+
   const startAgain = async () => {
     if (!activeRoom) return;
     setActionLoading(true);
@@ -436,13 +613,13 @@ export default function CreateOwnPage() {
       return;
     }
 
-    // close + refresh list
     setActiveRoom(null);
     setRoomInfo(null);
     setRoomBoard([]);
     setRoomMsgs([]);
     setRoomMsg(null);
     setChatError(null);
+    setActionMsg(null);
 
     await loadMyRooms();
     setTab("rooms");
@@ -455,6 +632,7 @@ export default function CreateOwnPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // realtime: chat insert
   useEffect(() => {
     if (!activeRoom) return;
 
@@ -486,6 +664,58 @@ export default function CreateOwnPage() {
     };
   }, [activeRoom]);
 
+  // realtime: ready state changes (duel)
+  useEffect(() => {
+    if (!activeRoom) return;
+    const isDuel = (activeRoom.room_type ?? "group") === "duel";
+    if (!isDuel) return;
+
+    const channel = supabase
+      .channel(`room_ready_${activeRoom.room_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "room_ready",
+          filter: `room_id=eq.${activeRoom.room_id}`,
+        },
+        async () => {
+          await loadDuelState(activeRoom.room_id);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "rooms",
+          filter: `id=eq.${activeRoom.room_id}`,
+        },
+        async () => {
+          await loadDuelState(activeRoom.room_id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoom, userId]);
+
+  // auto navigate when start payload appears
+  useEffect(() => {
+    if (!activeRoom) return;
+    const isDuel = (activeRoom.room_type ?? "group") === "duel";
+    if (!isDuel) return;
+    if (!duelStartPayload) return;
+
+    // čim payload postoji -> oba klijenta idu u igru
+    goToDuelGame(duelStartPayload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duelStartPayload]);
+
   return (
     <main
       className={cx(
@@ -508,11 +738,19 @@ export default function CreateOwnPage() {
                   {activeRoom ? "Room" : "Create / Join"}
                 </div>
                 <div className="mt-1 text-[12px] text-white/65">
-                  {activeRoom
-                    ? `Mode: ${activeRoom.mode === "word" ? "Quick-Word" : "Quick-Photo"} • Target: ${
+                  {activeRoom ? (
+                    (activeRoom.room_type ?? "group") === "duel" ? (
+                      `Type: 1on1 • Mode: ${
+                        (activeRoom.duel_mode ?? "fast_round") === "fast_round" ? "Fast Round" : "Hidden Word"
+                      }`
+                    ) : (
+                      `Type: Group • Mode: ${activeRoom.mode === "word" ? "Quick-Word" : "Quick-Photo"} • Target: ${
                         activeRoom.target_points
                       }`
-                    : "Private groups with separate scoring + chat (key only)."}
+                    )
+                  ) : (
+                    "Private rooms (group or 1on1). Key-only invite."
+                  )}
                 </div>
               </div>
 
@@ -526,6 +764,10 @@ export default function CreateOwnPage() {
                     setRoomMsg(null);
                     setChatError(null);
                     setActionMsg(null);
+                    setDuelStatusMsg(null);
+                    setDuelStartPayload(null);
+                    setDuelReadyMine(false);
+                    setDuelReadyOther(false);
                     setTab("rooms");
                   }}
                   className="shrink-0 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75 active:scale-[0.98]"
@@ -577,8 +819,74 @@ export default function CreateOwnPage() {
                 </div>
               </div>
 
-              {/* Winner / Start again */}
-              {roomInfo && !roomInfo.is_active ? (
+              {/* DUEL PLAY PANEL */}
+              {(activeRoom.room_type ?? "group") === "duel" ? (
+                <div className="rounded-3xl border border-blue-300/20 bg-blue-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
+                      ⚔️
+                    </div>
+                    <div className="min-w-0 w-full">
+                      <div className="text-[13px] font-semibold text-white/90">1on1</div>
+                      <div className="mt-1 text-[12px] text-white/65">
+                        Both players must press <b>Play</b>. Then the match starts on both phones.
+                      </div>
+
+                      {duelStatusMsg ? (
+                        <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-500/10 p-3 text-[12px] text-white/85">
+                          ⚠️ {duelStatusMsg}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-2xl border border-white/12 bg-white/6 p-3">
+                          <div className="text-[11px] text-white/55">You</div>
+                          <div className="mt-1 text-[13px] font-semibold">
+                            {duelReadyMine ? "Ready ✅" : "Not ready"}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-white/12 bg-white/6 p-3">
+                          <div className="text-[11px] text-white/55">Opponent</div>
+                          <div className="mt-1 text-[13px] font-semibold">
+                            {duelReadyOther ? "Ready ✅" : "Not ready"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setReady(!duelReadyMine)}
+                          className={cx(
+                            "rounded-2xl border px-4 py-3 text-[13px] font-semibold active:scale-[0.98]",
+                            duelReadyMine
+                              ? "border-emerald-300/25 bg-emerald-500/10 text-emerald-100"
+                              : "border-blue-300/25 bg-blue-500/12 text-white/90"
+                          )}
+                        >
+                          {duelReadyMine ? "Unready" : "Play (Ready)"}
+                        </button>
+
+                        <button
+                          onClick={tryStart}
+                          className={cx(
+                            "rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 px-4 py-3 text-[13px] font-semibold text-white/95 active:scale-[0.98]",
+                            !(duelReadyMine && duelReadyOther) && "opacity-60 pointer-events-none"
+                          )}
+                        >
+                          Start
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-white/45">
+                        Start button becomes available only when both are Ready.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* GROUP WINNER PANEL stays as you already had */}
+              {roomInfo && !roomInfo.is_active && (activeRoom.room_type ?? "group") === "group" ? (
                 <div className="rounded-3xl border border-blue-300/20 bg-blue-500/10 p-4">
                   <div className="flex items-start gap-3">
                     <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
@@ -641,7 +949,7 @@ export default function CreateOwnPage() {
         </header>
 
         <section className="mt-5 space-y-2">
-          {/* ROOMS */}
+          {/* ROOMS LIST */}
           {!activeRoom && tab === "rooms" ? (
             <>
               {createdCode ? (
@@ -668,7 +976,7 @@ export default function CreateOwnPage() {
                         </button>
                       </div>
                       <div className="mt-2 text-[11px] text-white/60">
-                        Share this key so friends can join.
+                        Share this key so others can join.
                       </div>
                     </div>
                   </div>
@@ -718,22 +1026,36 @@ export default function CreateOwnPage() {
                   <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                     <div className="flex items-center justify-between">
                       <div className="text-[12px] font-semibold text-white/85">Your rooms</div>
-                      <div className="text-[11px] text-white/55">Max 3 for now</div>
+                      <div className="text-[11px] text-white/55">Max 3 (owner rooms)</div>
                     </div>
                   </div>
 
-                  {myRooms.map((r) => (
-                    <Card
-                      key={r.room_id}
-                      icon={r.mode === "word" ? "⌨️" : "📸"}
-                      title={`Room ${r.code}`}
-                      subtitle={`Target ${r.target_points} • Created ${new Date(
-                        r.created_at
-                      ).toLocaleDateString()}`}
-                      right={r.mode === "word" ? "Quick-Word" : "Quick-Photo"}
-                      onClick={() => openRoom(r)}
-                    />
-                  ))}
+                  {myRooms.map((r) => {
+                    const t = (r.room_type ?? "group") as RoomType;
+                    const isDuel = t === "duel";
+                    const right = isDuel
+                      ? (r.duel_mode ?? "fast_round") === "fast_round"
+                        ? "1on1 • Fast Round"
+                        : "1on1 • Hidden Word"
+                      : r.mode === "word"
+                      ? "Group • Quick-Word"
+                      : "Group • Quick-Photo";
+
+                    const subtitle = isDuel
+                      ? `Key ${r.code} • Created ${new Date(r.created_at).toLocaleDateString()}`
+                      : `Target ${r.target_points} • Created ${new Date(r.created_at).toLocaleDateString()}`;
+
+                    return (
+                      <Card
+                        key={r.room_id}
+                        icon={isDuel ? "⚔️" : r.mode === "word" ? "⌨️" : "📸"}
+                        title={`Room ${r.code}`}
+                        subtitle={subtitle}
+                        right={right}
+                        onClick={() => openRoom(r)}
+                      />
+                    );
+                  })}
 
                   <Card
                     icon="🔄"
@@ -751,38 +1073,73 @@ export default function CreateOwnPage() {
           {!activeRoom && tab === "create" ? (
             <div className="space-y-2">
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
-                <div className="text-[12px] font-semibold text-white/85">Game mode</div>
+                <div className="text-[12px] font-semibold text-white/85">Room type</div>
                 <div className="mt-3">
                   <Segmented
-                    value={createMode}
-                    onChange={(v) => setCreateMode(v as Mode)}
+                    value={createRoomType}
+                    onChange={(v) => setCreateRoomType(v as RoomType)}
                     options={[
-                      { value: "word", label: "Quick-Word", icon: "⌨️" },
-                      { value: "photo", label: "Quick-Photo", icon: "📸" },
+                      { value: "group", label: "Group", icon: "👥", hint: "Quick-Word/Photo" },
+                      { value: "duel", label: "1on1", icon: "⚔️", hint: "Ready → Play" },
                     ]}
                   />
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[12px] font-semibold text-white/85">Target points</div>
-                  <div className="text-[11px] text-white/45">e.g. 1000</div>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
-                    🎯
+              {createRoomType === "group" ? (
+                <>
+                  <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                    <div className="text-[12px] font-semibold text-white/85">Game mode</div>
+                    <div className="mt-3">
+                      <Segmented
+                        value={createMode}
+                        onChange={(v) => setCreateMode(v as GroupMode)}
+                        options={[
+                          { value: "word", label: "Quick-Word", icon: "⌨️" },
+                          { value: "photo", label: "Quick-Photo", icon: "📸" },
+                        ]}
+                      />
+                    </div>
                   </div>
-                  <input
-                    value={String(targetPoints)}
-                    onChange={(e) => setTargetPoints(Number(e.target.value || "0"))}
-                    inputMode="numeric"
-                    className="w-full rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none focus:border-white/25 focus:bg-slate-950/55"
-                    placeholder="1000"
-                  />
+
+                  <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[12px] font-semibold text-white/85">Target points</div>
+                      <div className="text-[11px] text-white/45">e.g. 1000</div>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
+                        🎯
+                      </div>
+                      <input
+                        value={String(targetPoints)}
+                        onChange={(e) => setTargetPoints(Number(e.target.value || "0"))}
+                        inputMode="numeric"
+                        className="w-full rounded-2xl border border-white/12 bg-slate-950/40 px-4 py-3 text-[15px] outline-none focus:border-white/25 focus:bg-slate-950/55"
+                        placeholder="1000"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                  <div className="text-[12px] font-semibold text-white/85">1on1 mode</div>
+                  <div className="mt-3">
+                    <Segmented
+                      value={createDuelMode}
+                      onChange={(v) => setCreateDuelMode(v as DuelMode)}
+                      options={[
+                        { value: "fast_round", label: "Fast Round", icon: "⚡", hint: "Same scramble" },
+                        { value: "hidden_word", label: "Hidden Word", icon: "🧩", hint: "Same letters" },
+                      ]}
+                    />
+                  </div>
+                  <div className="mt-2 text-[11px] text-white/45">
+                    Players join by key, both press Play, then match starts.
+                  </div>
                 </div>
-              </div>
+              )}
 
               {createMsg ? (
                 <div className="rounded-3xl border border-rose-400/25 bg-rose-500/10 p-4 text-white/85">
@@ -822,12 +1179,8 @@ export default function CreateOwnPage() {
                       ➕
                     </div>
                     <div>
-                      <div className="text-[15px] font-semibold">
-                        {createLoading ? "Creating…" : "Create room"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-white/65">
-                        Key-only invite
-                      </div>
+                      <div className="text-[15px] font-semibold">{createLoading ? "Creating…" : "Create room"}</div>
+                      <div className="mt-1 text-[11px] text-white/65">Key-only invite</div>
                     </div>
                   </div>
                   <div className="text-white/55">→</div>
@@ -885,49 +1238,44 @@ export default function CreateOwnPage() {
           {/* ROOM VIEW */}
           {activeRoom ? (
             <>
-              {/* Leaderboard */}
-              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold text-white/85">
-                    Room ranking {roomInfo ? `• Round ${roomInfo.current_round}` : ""}
-                  </div>
-                  <div className="text-[11px] text-white/55">
-                    {roomInfo?.is_active ? "Live" : "Finished"}
-                  </div>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  {roomBoard.length === 0 ? (
-                    <div className="text-[12px] text-white/60">
-                      No points yet. Points start from 0 for this room round.
+              {/* Leaderboard (ONLY for group rooms; duel modes can later get duel results screen) */}
+              {(activeRoom.room_type ?? "group") === "group" ? (
+                <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-semibold text-white/85">
+                      Room ranking {roomInfo ? `• Round ${roomInfo.current_round}` : ""}
                     </div>
-                  ) : (
-                    roomBoard.map((r) => (
-                      <div
-                        key={r.user_id}
-                        className="rounded-3xl border border-white/12 bg-white/5 p-3"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
-                                #{r.place}
-                              </span>
-                              <div className="truncate text-[13px] font-semibold text-white/90">
-                                {r.username || "Player"}
+                    <div className="text-[11px] text-white/55">{roomInfo?.is_active ? "Live" : "Finished"}</div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {roomBoard.length === 0 ? (
+                      <div className="text-[12px] text-white/60">No points yet. Points start from 0 for this room round.</div>
+                    ) : (
+                      roomBoard.map((r) => (
+                        <div key={r.user_id} className="rounded-3xl border border-white/12 bg-white/5 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                                  #{r.place}
+                                </span>
+                                <div className="truncate text-[13px] font-semibold text-white/90">
+                                  {r.username || "Player"}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="shrink-0 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
-                            <div className="text-[10px] text-white/55">Points</div>
-                            <div className="text-[15px] font-extrabold">{r.points_total}</div>
+                            <div className="shrink-0 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
+                              <div className="text-[10px] text-white/55">Points</div>
+                              <div className="text-[15px] font-extrabold">{r.points_total}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {/* Chat */}
               <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
@@ -955,25 +1303,18 @@ export default function CreateOwnPage() {
                             key={m.id}
                             className={cx(
                               "max-w-[92%] rounded-2xl border px-3 py-2",
-                              mine
-                                ? "ml-auto border-blue-300/20 bg-blue-500/12"
-                                : "mr-auto border-white/12 bg-white/5"
+                              mine ? "ml-auto border-blue-300/20 bg-blue-500/12" : "mr-auto border-white/12 bg-white/5"
                             )}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-[10px] font-semibold text-white/70">
-                                {mine ? "You" : m.username || "Player"}
+                                {mine ? "You" : (m.username || "Player")}
                               </div>
                               <div className="text-[10px] text-white/45">
-                                {new Date(m.created_at).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                               </div>
                             </div>
-                            <div className="mt-1 text-[13px] text-white/90 whitespace-pre-wrap">
-                              {m.message}
-                            </div>
+                            <div className="mt-1 text-[13px] text-white/90 whitespace-pre-wrap">{m.message}</div>
                           </div>
                         );
                       })}
@@ -1023,9 +1364,7 @@ export default function CreateOwnPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-[15px] font-semibold">Delete room</div>
-                        <div className="mt-1 text-[11px] text-white/70">
-                          Removes room for everyone (cannot be undone)
-                        </div>
+                        <div className="mt-1 text-[11px] text-white/70">Removes room for everyone (cannot be undone)</div>
                       </div>
                       <div className="text-white/55">→</div>
                     </div>
@@ -1036,9 +1375,7 @@ export default function CreateOwnPage() {
           ) : null}
         </section>
 
-        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">
-          Quick • Rooms
-        </footer>
+        <footer className="mt-auto pb-2 pt-8 text-center text-[11px] text-white/40">Quick • Rooms</footer>
       </div>
     </main>
   );
