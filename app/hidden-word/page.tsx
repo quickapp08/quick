@@ -43,9 +43,9 @@ function msToClock(ms: number) {
 }
 
 function pointsForLen(n: number) {
-  if (n <= 3) return 1; // 1–3
-  if (n <= 5) return 2; // 4–5
-  return 3; // 6+
+  if (n <= 3) return 1;
+  if (n <= 5) return 2;
+  return 3;
 }
 
 function countLetters(str: string) {
@@ -65,7 +65,7 @@ function canBuild(word: string, lettersMap: Record<string, number>) {
   return true;
 }
 
-// deterministic RNG (stable per round key)
+/* deterministic RNG (stable per round key) */
 function hashToUint32(str: string) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -111,10 +111,7 @@ function shuffleArrayDeterministic<T>(arr: T[], seedKey: string) {
   return a;
 }
 
-type Tile = {
-  id: string;
-  ch: string; // uppercase letter
-};
+type Tile = { id: string; ch: string };
 
 function makeTiles(letters: string, seedKey: string): Tile[] {
   const arr = letters.toUpperCase().split("");
@@ -147,106 +144,15 @@ function Card({
         aria-hidden="true"
       />
       <div
-        className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-blue-500/14 blur-2xl"
+        className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-blue-500/16 blur-2xl"
         aria-hidden="true"
       />
       <div
-        className="pointer-events-none absolute -left-16 bottom-[-90px] h-56 w-56 rounded-full bg-blue-500/10 blur-3xl"
+        className="pointer-events-none absolute -left-16 bottom-[-90px] h-56 w-56 rounded-full bg-blue-500/12 blur-3xl"
         aria-hidden="true"
       />
       <div className="relative z-[2]">{children}</div>
     </div>
-  );
-}
-
-function StatusPill({ phase }: { phase: Phase }) {
-  const tone =
-    phase === "playing"
-      ? "border-emerald-300/25 bg-emerald-500/12 text-emerald-50"
-      : phase === "done"
-      ? "border-blue-300/22 bg-blue-500/12 text-blue-50"
-      : "border-white/12 bg-white/6 text-white/85";
-
-  const icon = phase === "playing" ? "🟢" : phase === "done" ? "🏁" : "⚡";
-  const label = phase === "playing" ? "LIVE" : phase === "done" ? "FINISHED" : "READY";
-
-  return (
-    <div
-      className={cx(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-extrabold",
-        "backdrop-blur-[10px] shadow-[0_14px_40px_rgba(0,0,0,0.35)]",
-        tone
-      )}
-    >
-      <span className="text-[13px] leading-none">{icon}</span>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function MiniStat({ icon, text }: { icon: string; text: string }) {
-  return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-extrabold text-white/90 shadow-[0_14px_40px_rgba(0,0,0,0.30)] backdrop-blur-[10px]">
-      <span className="text-[13px] leading-none">{icon}</span>
-      <span>{text}</span>
-    </div>
-  );
-}
-
-function PrimaryCTA({
-  title,
-  subtitle,
-  onClick,
-  disabled,
-  rightIcon = "→",
-}: {
-  title: string;
-  subtitle?: string;
-  onClick: () => void;
-  disabled?: boolean;
-  rightIcon?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cx(
-        "group relative w-full overflow-hidden rounded-3xl border px-5 py-5 text-left",
-        "border-blue-300/22 bg-gradient-to-b from-blue-500/28 to-blue-500/12",
-        "shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-[12px] transition",
-        "hover:-translate-y-[1px] hover:shadow-[0_0_70px_rgba(59,130,246,0.25)]",
-        "active:scale-[0.98] touch-manipulation",
-        disabled ? "opacity-60 pointer-events-none" : ""
-      )}
-    >
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/20 blur-2xl"
-        aria-hidden="true"
-      />
-      <div
-        className={cx(
-          "pointer-events-none absolute -left-44 top-0 h-full w-44 rotate-[20deg]",
-          "bg-gradient-to-r from-transparent via-white/16 to-transparent blur-xl",
-          "transition-transform duration-700 ease-out",
-          "group-hover:translate-x-[560px]"
-        )}
-        aria-hidden="true"
-      />
-      <div className="relative z-[2] flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[18px] font-extrabold tracking-tight text-white/95">
-            {title}
-          </div>
-          {subtitle ? (
-            <div className="mt-1 text-[12px] text-white/65">{subtitle}</div>
-          ) : null}
-        </div>
-
-        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-blue-300/18 bg-blue-500/12">
-          <span className="text-[18px] leading-none">{rightIcon}</span>
-        </div>
-      </div>
-    </button>
   );
 }
 
@@ -271,6 +177,101 @@ function Toast({
       <div className="font-semibold">{title}</div>
       {sub ? <div className="mt-0.5 text-white/70">{sub}</div> : null}
     </div>
+  );
+}
+
+function HUDPill({ left, right }: { left: string; right: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2 shadow-[0_14px_40px_rgba(0,0,0,0.30)] backdrop-blur-[10px]">
+      <div className="text-[11px] font-semibold text-white/60">{left}</div>
+      <div className="text-[13px] font-extrabold text-white/92">{right}</div>
+    </div>
+  );
+}
+
+function PillButton({
+  children,
+  onClick,
+  disabled,
+  className,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(
+        "rounded-2xl border px-3 py-2 text-[12px] font-extrabold",
+        "border-white/10 bg-white/5 text-white/90",
+        "shadow-[0_14px_40px_rgba(0,0,0,0.30)] backdrop-blur-[10px] transition",
+        "hover:bg-white/10 active:scale-[0.98] touch-manipulation",
+        disabled && "opacity-55 pointer-events-none",
+        className
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrimaryCTA({
+  title,
+  subtitle,
+  onClick,
+  disabled,
+  rightIcon = "→",
+}: {
+  title: string;
+  subtitle?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  rightIcon?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(
+        "group relative w-full overflow-hidden rounded-3xl border px-5 py-5 text-left",
+        "border-blue-300/22 bg-gradient-to-b from-blue-500/32 to-blue-500/12",
+        "shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-[12px] transition",
+        "hover:-translate-y-[1px] hover:shadow-[0_0_70px_rgba(59,130,246,0.25)]",
+        "active:scale-[0.98] touch-manipulation",
+        disabled ? "opacity-60 pointer-events-none" : ""
+      )}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/22 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className={cx(
+          "pointer-events-none absolute -left-44 top-0 h-full w-44 rotate-[20deg]",
+          "bg-gradient-to-r from-transparent via-white/18 to-transparent blur-xl",
+          "transition-transform duration-700 ease-out",
+          "group-hover:translate-x-[560px]"
+        )}
+        aria-hidden="true"
+      />
+      <div className="relative z-[2] flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[18px] font-extrabold tracking-tight text-white/95">
+            {title}
+          </div>
+          {subtitle ? (
+            <div className="mt-1 text-[12px] text-white/65">{subtitle}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-blue-300/18 bg-blue-500/12">
+          <span className="text-[18px] leading-none">{rightIcon}</span>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -378,7 +379,7 @@ export default function HiddenWordPage() {
   const foundSet = useMemo(() => new Set(found), [found]);
   const [score, setScore] = useState(0);
 
-  // Feedback coloring for the whole selection after Send
+  // Feedback coloring for the whole selection after Submit
   const [lockTone, setLockTone] = useState<null | "ok" | "bad">(null);
   const clearLockTimerRef = useRef<number | null>(null);
 
@@ -422,35 +423,49 @@ export default function HiddenWordPage() {
     };
   }, []);
 
-  // Generate letters (10–14) that guarantee >=10 dictionary words (best effort)
+  // Better randomness: build from many candidate words + add random "noise" letters so rounds don't feel identical
   const generateLettersGuaranteed = (seedKey: string) => {
-    if (!dict || dict.length < 120) {
+    if (!dict || dict.length < 200) {
       return { letters: "TABLESROCKET".toUpperCase(), ok: false };
     }
 
     const rand = mulberry32(hashToUint32(seedKey));
-    const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
+    const candidates = dict.filter((w) => w.len >= 3 && w.len <= 8);
+
     const pick = () =>
       candidates[Math.floor(rand() * candidates.length)]?.word || "table";
 
-    for (let attempt = 0; attempt < 300; attempt++) {
+    const alpha = "EEEEEEEAAAAAAARRRRRIIIIIOOOOONNNNSSSSSTTTTLLLDDCCUUMMBBPPFFGGHHJJKKQQVVWWXXYYZZ";
+    const pickNoise = () => alpha[Math.floor(rand() * alpha.length)] || "E";
+
+    // Try more combos, vary target length (12–16)
+    for (let attempt = 0; attempt < 600; attempt++) {
       const base: string[] = [];
-      while (base.length < 10) {
+      const baseCount = 8 + Math.floor(rand() * 6); // 8–13 base words
+      while (base.length < baseCount) {
         const w = pick();
         if (!base.includes(w)) base.push(w);
       }
 
-      const L = unionLettersForWords(base);
-      if (L.length < 10 || L.length > 14) continue;
+      let L = unionLettersForWords(base);
+      if (L.length < 10) continue;
+
+      // Add "noise" letters to reach target length (feel more random, still buildable)
+      const target = 12 + Math.floor(rand() * 5); // 12–16
+      while (L.length < target) L += pickNoise();
+
+      // Hard cap
+      if (L.length > 16) L = L.slice(0, 16);
 
       const map = countLetters(L);
+
       const possible = candidates
         .filter((w) => w.len >= 2 && w.len <= 10)
         .map((w) => w.word)
         .filter((w) => canBuild(w, map));
 
       const uniquePossible = Array.from(new Set(possible));
-      if (uniquePossible.length >= 10) return { letters: L.toUpperCase(), ok: true };
+      if (uniquePossible.length >= 12) return { letters: L.toUpperCase(), ok: true };
     }
 
     return { letters: "TABLESROCKET".toUpperCase(), ok: false };
@@ -462,7 +477,8 @@ export default function HiddenWordPage() {
       return;
     }
 
-    const key = `${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    // Make key more “unique” so you don't hit similar seeds
+    const key = `${userId || "u"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     setRoundKey(key);
 
     const gen = generateLettersGuaranteed(key);
@@ -480,7 +496,7 @@ export default function HiddenWordPage() {
     setStartMs(t0);
     setPhase("playing");
 
-    if (!gen.ok) flash("info", "Quick tip", "Add more words to dictionary for richer rounds.");
+    if (!gen.ok) flash("info", "Tip", "Add more words to dictionary for richer rounds.");
   };
 
   const endRound = async () => {
@@ -515,12 +531,13 @@ export default function HiddenWordPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msLeft, phase]);
 
+  // ✅ Toggle selection on tap (select/deselect)
   const onTapTile = (id: string) => {
     if (phase !== "playing") return;
     if (lockTone) return;
 
     setSelectedIds((prev) => {
-      if (prev.includes(id)) return prev;
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
       return [...prev, id];
     });
   };
@@ -535,6 +552,15 @@ export default function HiddenWordPage() {
     if (phase !== "playing") return;
     if (lockTone) return;
     clearSelection();
+  };
+
+  const shuffleTilesOnly = () => {
+    if (phase !== "playing") return;
+    if (!letters || !roundKey) return;
+    if (lockTone) return;
+    // reshuffle layout, keep letters the same
+    const nextKey = `${roundKey}:shuffle:${Date.now()}`;
+    setTiles(makeTiles(letters, nextKey));
   };
 
   const submitSelected = () => {
@@ -574,7 +600,7 @@ export default function HiddenWordPage() {
     setScore((s) => s + pts);
 
     setLockTone("ok");
-    flash("ok", word.length >= 6 ? "Fantastic!" : "Bravo!", `+${pts} pts`);
+    flash("ok", word.length >= 6 ? "Nice!" : "Good!", `+${pts} pts`);
     safeClearLockLater();
   };
 
@@ -596,17 +622,15 @@ export default function HiddenWordPage() {
     const isSelected = selectedSet.has(id);
 
     if (isSelected && lockTone === "ok") {
-      return "border-emerald-300/25 bg-emerald-500/18 text-white shadow-[0_0_30px_rgba(16,185,129,0.18)]";
+      return "border-emerald-300/30 bg-emerald-500/20 text-white shadow-[0_0_40px_rgba(16,185,129,0.22)]";
     }
     if (isSelected && lockTone === "bad") {
-      return "border-rose-300/25 bg-rose-500/18 text-white shadow-[0_0_30px_rgba(244,63,94,0.18)]";
+      return "border-rose-300/30 bg-rose-500/22 text-white shadow-[0_0_40px_rgba(244,63,94,0.22)]";
     }
-
     if (isSelected) {
-      return "border-blue-300/30 bg-blue-500/18 text-white shadow-[0_0_30px_rgba(59,130,246,0.18)]";
+      return "border-blue-300/35 bg-blue-500/22 text-white shadow-[0_0_40px_rgba(59,130,246,0.22)]";
     }
-
-    return "border-white/12 bg-white/5 text-white/90";
+    return "border-white/12 bg-white/6 text-white/92 hover:bg-white/10";
   };
 
   if (!authReady || !userId) {
@@ -637,6 +661,7 @@ export default function HiddenWordPage() {
   }
 
   const showTiles = tiles.length > 0;
+  const progress = phase === "playing" ? Math.max(0, Math.min(1, msLeft / totalMs)) : 1;
 
   return (
     <main
@@ -649,97 +674,119 @@ export default function HiddenWordPage() {
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
-      {/* glow bg like FastRound */}
+      {/* background glow */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-blue-500/12 blur-[70px]" />
-        <div className="absolute top-[240px] left-[-140px] h-[420px] w-[420px] rounded-full bg-blue-500/10 blur-[70px]" />
-        <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
+        <div className="absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-blue-500/14 blur-[80px]" />
+        <div className="absolute top-[240px] left-[-140px] h-[420px] w-[420px] rounded-full bg-blue-500/10 blur-[80px]" />
+        <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[90px]" />
       </div>
 
       <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* Header (NO CARD) */}
+        {/* Header */}
         <header className="pt-2">
           <TopBar title="Hidden Word" />
 
-          <div className="mt-5 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-white/65">
-                Game mode
-              </div>
-              <h1 className="mt-1 text-[28px] font-extrabold tracking-tight text-white/95 leading-tight">
+          <div className="mt-5">
+            <div className="text-[12px] font-semibold text-white/60">Game mode</div>
+            <div className="mt-1 flex items-end justify-between gap-3">
+              <h1 className="text-[30px] font-extrabold tracking-tight text-white/95 leading-tight">
                 Hidden Word
               </h1>
-              <div className="mt-2 text-[12px] text-white/55">
-                {phase === "setup"
-                  ? "Tap letters to form words — no keyboard."
-                  : phase === "playing"
-                  ? "Tap letters, then press Send."
-                  : "Finished. Check your words."}
-              </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <MiniStat icon="🧩" text={`${score} pts`} />
-                <MiniStat icon="🔎" text={`${found.length} found`} />
-                <MiniStat icon="⏱" text={phase === "playing" ? timeLabel : "1:00"} />
+              {/* timer “chip” */}
+              <div className="shrink-0">
+                <div className="relative grid place-items-center rounded-3xl border border-white/10 bg-white/5 px-4 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.40)] backdrop-blur-[12px]">
+                  <div className="text-[10px] font-semibold text-white/55">TIME</div>
+                  <div className="text-[18px] font-extrabold tracking-tight text-white/92">
+                    {phase === "playing" ? timeLabel : "1:00"}
+                  </div>
+
+                  {/* tiny progress bar */}
+                  <div className="mt-2 h-[6px] w-[92px] overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full bg-white/30"
+                      style={{ width: `${Math.round(progress * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="shrink-0">
-              <StatusPill phase={phase} />
+            <div className="mt-2 text-[12px] text-white/55">
+              {phase === "setup"
+                ? "Tap letters to build a word. Tap again to remove."
+                : phase === "playing"
+                ? "Build your word fast — Submit it."
+                : "Finished. Check your words."}
             </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <HUDPill left="Score" right={`${score}`} />
+              <HUDPill left="Found" right={`${found.length}`} />
+              <HUDPill left="Round" right={`${ROUND_SECONDS}s`} />
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <PillButton
+                onClick={shuffleTilesOnly}
+                disabled={phase !== "playing" || !showTiles || !!lockTone}
+              >
+                🔀 Shuffle
+              </PillButton>
+              <PillButton
+                onClick={onBackspace}
+                disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
+              >
+                ⌫ Undo
+              </PillButton>
+              <PillButton
+                onClick={onClear}
+                disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
+              >
+                ✖ Clear
+              </PillButton>
+            </div>
+
+            {dictErr ? (
+              <div className="mt-4">
+                <Toast tone="bad" title="Dictionary error" sub={dictErr} />
+              </div>
+            ) : null}
+
+            {toast ? (
+              <div className="mt-4">
+                <Toast tone={toast.tone} title={toast.title} sub={toast.sub} />
+              </div>
+            ) : null}
           </div>
-
-          {dictErr ? (
-            <div className="mt-4">
-              <Toast tone="bad" title="Dictionary error" sub={dictErr} />
-            </div>
-          ) : null}
-
-          {toast ? (
-            <div className="mt-4">
-              <Toast tone={toast.tone} title={toast.title} sub={toast.sub} />
-            </div>
-          ) : null}
         </header>
 
         {/* Content */}
         <section className="mt-5 space-y-3 pb-28">
-          {/* Letters card */}
+          {/* Letters */}
           <Card>
             <div className="p-4">
               <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold text-white/80">
-                  Letters
-                </div>
-                <div className="text-[11px] text-white/45">
-                  1–3:+1 • 4–5:+2 • 6+:+3
-                </div>
+                <div className="text-[12px] font-semibold text-white/80">Letters</div>
+                <div className="text-[11px] text-white/45">1–3:+1 • 4–5:+2 • 6+:+3</div>
               </div>
 
               <div className="mt-3 grid grid-cols-7 gap-2">
                 {(showTiles
                   ? tiles
-                  : Array.from({ length: 14 }, (_, i) => ({
-                      id: `p-${i}`,
-                      ch: "•",
-                    }))
+                  : Array.from({ length: 14 }, (_, i) => ({ id: `p-${i}`, ch: "•" }))
                 ).map((t) => (
                   <button
                     key={t.id}
                     onClick={() => onTapTile(t.id)}
-                    disabled={
-                      phase !== "playing" ||
-                      !showTiles ||
-                      !!lockTone ||
-                      selectedSet.has(t.id)
-                    }
+                    disabled={phase !== "playing" || !showTiles || !!lockTone}
                     className={cx(
-                      "grid aspect-square place-items-center rounded-2xl border text-[16px] font-extrabold",
-                      "bg-slate-950/30 shadow-[0_12px_34px_rgba(0,0,0,0.35)] transition",
-                      "active:scale-[0.98] touch-manipulation",
+                      "grid aspect-square place-items-center rounded-2xl border",
+                      "text-[18px] font-extrabold",
+                      "bg-slate-950/30 shadow-[0_14px_40px_rgba(0,0,0,0.38)] transition",
+                      "active:scale-[0.97] touch-manipulation",
                       tileClass(t.id),
-                      (phase !== "playing" || !showTiles) && "opacity-60",
-                      selectedSet.has(t.id) && !lockTone && "ring-1 ring-white/6"
+                      (phase !== "playing" || !showTiles) && "opacity-60"
                     )}
                   >
                     {t.ch}
@@ -747,66 +794,38 @@ export default function HiddenWordPage() {
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-[11px] text-white/55">
-                <div>Tap letters only once.</div>
-                <div>Round: {ROUND_SECONDS}s</div>
+              <div className="mt-3 text-[11px] text-white/50">
+                Tap a selected tile again to remove it.
               </div>
             </div>
           </Card>
 
-          {/* Your word card */}
+          {/* Current word */}
           <Card>
             <div className="p-4">
               <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold text-white/80">
-                  Your word
-                </div>
+                <div className="text-[12px] font-semibold text-white/80">Current word</div>
                 <div className="text-[11px] text-white/45">
-                  Back removes last
+                  {selectedIds.length ? `${selectedIds.length} letters` : "—"}
                 </div>
               </div>
 
-              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3 text-[18px] font-extrabold tracking-[0.14em] text-white/92">
-                {selectedWord || "—"}
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  onClick={onBackspace}
-                  disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
-                  className={cx(
-                    "rounded-3xl border border-white/10 bg-white/5 px-4 py-3",
-                    "text-[13px] font-extrabold text-white/90",
-                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
-                    "hover:bg-white/8 active:scale-[0.98] touch-manipulation",
-                    (!selectedIds.length || !!lockTone) && "opacity-55"
-                  )}
-                >
-                  ⌫ Back
-                </button>
-
-                <button
-                  onClick={onClear}
-                  disabled={phase !== "playing" || !selectedIds.length || !!lockTone}
-                  className={cx(
-                    "rounded-3xl border border-white/10 bg-white/5 px-4 py-3",
-                    "text-[13px] font-extrabold text-white/90",
-                    "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[12px] transition",
-                    "hover:bg-white/8 active:scale-[0.98] touch-manipulation",
-                    (!selectedIds.length || !!lockTone) && "opacity-55"
-                  )}
-                >
-                  Clear
-                </button>
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <div className="text-[20px] font-extrabold tracking-[0.18em] text-white/92">
+                  {selectedWord || "—"}
+                </div>
+                <div className="mt-1 text-[11px] text-white/45">
+                  Points: {selectedWord ? pointsForLen(selectedWord.length) : 0}
+                </div>
               </div>
 
               <div className="mt-3 text-[11px] text-white/45">
-                Tip: longer words score more.
+                Pro tip: Longer words = more points.
               </div>
             </div>
           </Card>
 
-          {/* Found words card */}
+          {/* Found words */}
           <Card>
             <div className="p-4">
               <div className="flex items-center justify-between">
@@ -829,7 +848,9 @@ export default function HiddenWordPage() {
                   ))}
                 </div>
               ) : (
-                <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
+                <div className="mt-3 text-[12px] text-white/55">
+                  No words yet. Start tapping letters.
+                </div>
               )}
 
               {phase === "done" ? (
@@ -866,39 +887,30 @@ export default function HiddenWordPage() {
           </Card>
         </section>
 
-        {/* ✅ Sticky HERO CTA:
-            - setup: Start
-            - playing: Send
-            - done: none
-        */}
+        {/* Sticky HERO CTA */}
         {phase !== "done" ? (
           <div
             className="fixed left-0 right-0 bottom-0 z-[50]"
-            style={{
-              paddingBottom: "max(env(safe-area-inset-bottom), 14px)",
-            }}
+            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
           >
             <div className="mx-auto max-w-md px-4">
-                
               {phase === "setup" ? (
                 <PrimaryCTA
-                  title={dict && dictSet ? "Start" : "Loading…"}
-                  subtitle="Letters are generated to have plenty of valid words."
+                  title={dict && dictSet ? "PLAY" : "Loading…"}
+                  subtitle="New letters every round."
                   onClick={startRound}
                   disabled={!dict || !dictSet}
                   rightIcon="▶"
                 />
               ) : (
                 <PrimaryCTA
-                  title="Send"
+                  title="SUBMIT"
                   subtitle={
-                    selectedIds.length < 2
-                      ? "Pick at least 2 letters"
-                      : "Check word + score"
+                    selectedIds.length < 2 ? "Pick at least 2 letters" : "Validate + score"
                   }
                   onClick={submitSelected}
                   disabled={selectedIds.length < 2 || !!lockTone}
-                  rightIcon="→"
+                  rightIcon="✓"
                 />
               )}
             </div>
