@@ -402,17 +402,13 @@ export default function HomePage() {
           </div>
 
           <div className="mt-5 flex justify-center">
-            <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-[10px]">
-              <Image
-                src="/quick-logo.png"
-                alt="Quick"
-                width={96}
-                height={96}
-                priority
-                className="h-[96px] w-[96px]"
-              />
-            </div>
-          </div>
+  <div className="grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-[10px]">
+    <span className="text-[22px] font-extrabold tracking-tight text-white/95">
+      quick
+    </span>
+  </div>
+</div>
+
 
           {user ? (
             <div className="mt-4">
