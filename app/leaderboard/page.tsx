@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { getRank } from "../../lib/rank";
 
-type Mode = "word" | "photo" | "hidden";
+type Mode = "word" | "photo" | "hidden" | "fast";
 type Scope = "world" | "region";
 
 type RowBase = {
@@ -15,16 +15,11 @@ type RowBase = {
   country_code?: string;
 };
 
-type RowWP = RowBase & {
-  points_total: number;
-};
+type RowWP = RowBase & { points_total: number };
+type RowHidden = RowBase & { best_score: number; best_words_count: number };
+type RowFast = RowBase & { best_score: number; duration_sec: number };
 
-type RowHidden = RowBase & {
-  best_score: number;
-  best_words_count: number;
-};
-
-type Row = RowWP | RowHidden;
+type Row = RowWP | RowHidden | RowFast;
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -58,9 +53,7 @@ function PlaceBadge({ place }: { place: number }) {
     <div
       className={cx(
         "grid h-10 w-10 place-items-center rounded-2xl border text-[13px] font-extrabold",
-        isTop
-          ? "border-blue-300/25 bg-blue-500/12 text-white"
-          : "border-white/12 bg-white/5 text-white/80"
+        isTop ? "border-blue-300/25 bg-blue-500/12 text-white" : "border-white/12 bg-white/5 text-white/80"
       )}
       aria-label={`Place ${place}`}
     >
@@ -69,27 +62,23 @@ function PlaceBadge({ place }: { place: number }) {
   );
 }
 
-function ModePicker({
+function ModeTabs({
   value,
   onChange,
 }: {
   value: Mode;
   onChange: (v: Mode) => void;
 }) {
-  const items: Array<{
-    value: Mode;
-    title: string;
-    sub: string;
-    icon: string;
-  }> = [
-    { value: "word", title: "Word", sub: "Scrambled word", icon: "⌨️" },
-    { value: "photo", title: "Photo", sub: "Real-life prompt", icon: "📸" },
-    { value: "hidden", title: "Hidden", sub: "Tap letters", icon: "🧩" },
+  const items: Array<{ value: Mode; label: string }> = [
+    { value: "word", label: "Word" },
+    { value: "photo", label: "Photo" },
+    { value: "hidden", label: "Hidden" },
+    { value: "fast", label: "Fast" },
   ];
 
   return (
     <div className="rounded-[28px] border border-white/10 bg-white/5 p-2">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {items.map((it) => {
           const active = it.value === value;
           return (
@@ -97,38 +86,13 @@ function ModePicker({
               key={it.value}
               onClick={() => onChange(it.value)}
               className={cx(
-                "relative overflow-hidden rounded-[22px] border px-3 py-3 text-left transition active:scale-[0.98] touch-manipulation",
+                "rounded-[22px] border px-3 py-3 text-center text-[12px] font-semibold transition active:scale-[0.98] touch-manipulation",
                 active
-                  ? "border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.18)]"
-                  : "border-white/10 bg-white/5 hover:bg-white/8"
+                  ? "border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.18)] text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/8"
               )}
             >
-              {active ? (
-                <>
-                  <div
-                    className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-500/14 blur-2xl"
-                    aria-hidden="true"
-                  />
-                  <div
-                    className="pointer-events-none absolute inset-0 rounded-[22px] ring-1 ring-white/6"
-                    aria-hidden="true"
-                  />
-                </>
-              ) : null}
-
-              <div className="flex items-start gap-2">
-                <div className="grid h-9 w-9 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
-                  {it.icon}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-white/95">
-                    {it.title}
-                  </div>
-                  <div className={cx("mt-0.5 text-[10px] leading-snug", active ? "text-white/65" : "text-white/45")}>
-                    {it.sub}
-                  </div>
-                </div>
-              </div>
+              {it.label}
             </button>
           );
         })}
@@ -137,7 +101,7 @@ function ModePicker({
   );
 }
 
-function ScopePicker({
+function ScopeTabs({
   value,
   onChange,
   disabled,
@@ -146,41 +110,60 @@ function ScopePicker({
   onChange: (v: Scope) => void;
   disabled?: boolean;
 }) {
-  const items: Array<{ value: Scope; label: string; icon: string }> = [
-    { value: "world", label: "World", icon: "🌍" },
-    { value: "region", label: "Region", icon: "🗺️" },
-  ];
-
   return (
     <div className={cx("rounded-[28px] border border-white/10 bg-white/5 p-2", disabled && "opacity-60")}>
       <div className="grid grid-cols-2 gap-2">
-        {items.map((it) => {
+        {(["world", "region"] as Scope[]).map((s) => {
+          const active = s === value;
+          return (
+            <button
+              key={s}
+              onClick={() => !disabled && onChange(s)}
+              disabled={!!disabled}
+              className={cx(
+                "rounded-[22px] border px-4 py-3 text-center text-[12px] font-semibold transition active:scale-[0.98] touch-manipulation",
+                active
+                  ? "border-blue-300/25 bg-blue-500/12 text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/8"
+              )}
+            >
+              {s === "world" ? "World" : "Region"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SegSmall({
+  value,
+  onChange,
+  left,
+  right,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  left: { value: string; label: string };
+  right: { value: string; label: string };
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/10 bg-white/5 p-2">
+      <div className="grid grid-cols-2 gap-2">
+        {[left, right].map((it) => {
           const active = it.value === value;
           return (
             <button
               key={it.value}
-              onClick={() => !disabled && onChange(it.value)}
-              disabled={!!disabled}
+              onClick={() => onChange(it.value)}
               className={cx(
-                "rounded-[22px] border px-4 py-3 text-left transition active:scale-[0.98] touch-manipulation",
+                "rounded-[22px] border px-4 py-3 text-center text-[12px] font-semibold transition active:scale-[0.98] touch-manipulation",
                 active
-                  ? "border-blue-300/25 bg-blue-500/12"
-                  : "border-white/10 bg-white/5 hover:bg-white/8"
+                  ? "border-blue-300/25 bg-blue-500/12 text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/8"
               )}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
-                    {it.icon}
-                  </span>
-                  <div className="text-[13px] font-semibold text-white/90">
-                    {it.label}
-                  </div>
-                </div>
-                <div className={cx("text-[11px]", active ? "text-white/65" : "text-white/35")}>
-                  {active ? "Selected" : ""}
-                </div>
-              </div>
+              {it.label}
             </button>
           );
         })}
@@ -194,57 +177,150 @@ export default function LeaderboardPage() {
   const [scope, setScope] = useState<Scope>("world");
   const [region, setRegion] = useState<string>("HR");
 
+  const [fastDur, setFastDur] = useState<"30" | "60">("60");
+
+  const [limit, setLimit] = useState<number>(5);
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Hidden: only world
+  const [userId, setUserId] = useState<string | null>(null);
+  const [myRank, setMyRank] = useState<{ place: number; scoreLabel: string; subLabel?: string } | null>(null);
+
+  const isHidden = mode === "hidden";
+  const isFast = mode === "fast";
+
+  // Hidden + Fast: world only (za sad)
   useEffect(() => {
-    if (mode === "hidden" && scope !== "world") setScope("world");
-  }, [mode, scope]);
+    if ((isHidden || isFast) && scope !== "world") setScope("world");
+  }, [isHidden, isFast, scope]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!alive) return;
+      setUserId(data?.user?.id ?? null);
+    })();
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => {
+      setUserId(sess?.user?.id ?? null);
+    });
+    return () => {
+      alive = false;
+      sub?.subscription?.unsubscribe();
+    };
+  }, []);
 
   const title = useMemo(() => {
-    const m = mode === "word" ? "Word Quick" : mode === "photo" ? "Photo Quick" : "Hidden Word";
-    const s = mode === "hidden" ? "World" : scope === "world" ? "World" : `Region (${region || "—"})`;
-    return `${m} • ${s}`;
-  }, [mode, scope, region]);
+    const m =
+      mode === "word" ? "Word Quick" :
+      mode === "photo" ? "Photo Quick" :
+      mode === "hidden" ? "Hidden Word" :
+      "Fast Round";
+
+    const s = (isHidden || isFast) ? "World" : (scope === "world" ? "World" : `Region (${region || "—"})`);
+    const extra = isFast ? ` • ${fastDur}s` : "";
+    return `${m} • ${s}${extra}`;
+  }, [mode, scope, region, isHidden, isFast, fastDur]);
 
   const fetchBoard = async () => {
     setLoading(true);
     setMsg(null);
 
     try {
-      if (mode === "hidden") {
-        const { data, error } = await supabase
-          .from("v_hidden_word_leaderboard_top100")
-          .select("user_id, username, best_score, best_words_count")
-          .limit(100);
-
+      // fetch leaderboard rows
+      if (isHidden) {
+        const { data, error } = await supabase.rpc("get_hidden_leaderboard", { p_limit: limit });
         if (error) throw error;
 
-        const mapped: RowHidden[] = (data ?? []).map((r: any, idx: number) => ({
-          place: idx + 1,
+        const mapped: RowHidden[] = (data ?? []).map((r: any) => ({
+          place: Number(r.place),
           user_id: String(r.user_id),
           username: String(r.username ?? "Player"),
           best_score: Number(r.best_score ?? 0),
           best_words_count: Number(r.best_words_count ?? 0),
         }));
-
         setRows(mapped);
-        setLoading(false);
-        return;
+      } else if (isFast) {
+        const { data, error } = await supabase.rpc("get_fast_leaderboard", {
+          p_duration_sec: Number(fastDur),
+          p_limit: limit,
+        });
+        if (error) throw error;
+
+        const mapped: RowFast[] = (data ?? []).map((r: any) => ({
+          place: Number(r.place),
+          user_id: String(r.user_id),
+          username: String(r.username ?? "Player"),
+          country_code: r.country_code ? String(r.country_code) : undefined,
+          best_score: Number(r.best_score ?? 0),
+          duration_sec: Number(r.duration_sec ?? Number(fastDur)),
+        }));
+        setRows(mapped);
+      } else {
+        const { data, error } = await supabase.rpc("get_leaderboard", {
+          p_mode: mode,
+          p_scope: scope,
+          p_region: scope === "region" ? region : null,
+          p_limit: limit,
+        });
+        if (error) throw error;
+
+        setRows((data ?? []) as RowWP[]);
       }
 
-      const { data, error } = await supabase.rpc("get_leaderboard", {
-        p_mode: mode,
-        p_scope: scope,
-        p_region: scope === "region" ? region : null,
-        p_limit: 100,
-      });
+      // fetch MY rank (if logged in)
+      if (userId) {
+        if (isHidden) {
+          const { data, error } = await supabase.rpc("get_my_rank_hidden");
+          if (error) throw error;
+          const r = (data ?? [])[0];
+          if (r) {
+            setMyRank({
+              place: Number(r.place),
+              scoreLabel: `${Number(r.best_score ?? 0)} score`,
+              subLabel: `${Number(r.best_words_count ?? 0)} words`,
+            });
+          } else {
+            setMyRank(null);
+          }
+        } else if (isFast) {
+          const { data, error } = await supabase.rpc("get_my_rank_fast", { p_duration_sec: Number(fastDur) });
+          if (error) throw error;
+          const r = (data ?? [])[0];
+          if (r) {
+            setMyRank({
+              place: Number(r.place),
+              scoreLabel: `${Number(r.best_score ?? 0)} score`,
+              subLabel: `${Number(r.duration_sec ?? Number(fastDur))}s`,
+            });
+          } else {
+            setMyRank(null);
+          }
+        } else {
+          const { data, error } = await supabase.rpc("get_my_rank_word_photo", {
+            p_mode: mode,
+            p_scope: scope,
+            p_region: scope === "region" ? region : null,
+          });
+          if (error) throw error;
+          const r = (data ?? [])[0];
+          if (r) {
+            const pts = Number(r.points_total ?? 0);
+            setMyRank({
+              place: Number(r.place),
+              scoreLabel: `${pts} pts`,
+              subLabel: `Rank: ${getRank(pts)}`,
+            });
+          } else {
+            setMyRank(null);
+          }
+        }
+      } else {
+        setMyRank(null);
+      }
 
-      if (error) throw error;
-
-      setRows((data ?? []) as RowWP[]);
       setLoading(false);
     } catch (e: any) {
       setRows([]);
@@ -253,10 +329,24 @@ export default function LeaderboardPage() {
     }
   };
 
+  // refetch on changes
   useEffect(() => {
     fetchBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, scope, region]);
+  }, [mode, scope, region, fastDur, limit, userId]);
+
+  const canLoadMore = limit < 100;
+
+  const loadMore = () => {
+    setLimit((prev) => {
+      if (prev < 10) return 10;
+      if (prev < 25) return 25;
+      if (prev < 50) return 50;
+      return 100;
+    });
+  };
+
+  const resetLimit = () => setLimit(5);
 
   return (
     <main
@@ -279,21 +369,75 @@ export default function LeaderboardPage() {
                 <div className="text-[12px] font-semibold text-white/85">Leaderboard</div>
                 <div className="mt-1 text-[12px] text-white/65">{title}</div>
               </div>
+
               <div className="shrink-0 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] text-white/75">
-                🏁 Top 100
+                Top {limit}
               </div>
+            </div>
+
+            {/* YOUR RANK */}
+            <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/25 p-3">
+              {!userId ? (
+                <div className="text-[12px] text-white/70">
+                  Sign in to see <b>your rank</b>.
+                </div>
+              ) : myRank ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-white/55">Your rank</div>
+                    <div className="mt-1 text-[14px] font-semibold text-white/90">
+                      #{myRank.place} • {myRank.scoreLabel}
+                    </div>
+                    {myRank.subLabel ? (
+                      <div className="mt-0.5 text-[11px] text-white/55">{myRank.subLabel}</div>
+                    ) : null}
+                  </div>
+                  <div className="rounded-full border border-blue-300/20 bg-blue-500/12 px-3 py-1 text-[11px] text-white/80">
+                    You
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[12px] text-white/70">
+                  Your rank is not available yet.
+                </div>
+              )}
             </div>
           </div>
 
           <div className="mt-4 space-y-2">
-            {/* Better mode selector */}
-            <ModePicker value={mode} onChange={setMode} />
+            <ModeTabs
+              value={mode}
+              onChange={(v) => {
+                setMode(v);
+                setMsg(null);
+                resetLimit();
+              }}
+            />
 
-            {/* Scope selector */}
-            <ScopePicker value={scope} onChange={setScope} disabled={mode === "hidden"} />
+            <ScopeTabs
+              value={scope}
+              onChange={(v) => {
+                setScope(v);
+                setMsg(null);
+                resetLimit();
+              }}
+              disabled={isHidden || isFast}
+            />
 
-            {/* Region input */}
-            {scope === "region" && mode !== "hidden" ? (
+            {isFast ? (
+              <SegSmall
+                value={fastDur}
+                onChange={(v) => {
+                  setFastDur(v as "30" | "60");
+                  setMsg(null);
+                  resetLimit();
+                }}
+                left={{ value: "30", label: "30s" }}
+                right={{ value: "60", label: "60s" }}
+              />
+            ) : null}
+
+            {scope === "region" && !isHidden && !isFast ? (
               <div className="rounded-[28px] border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[12px] font-semibold text-white/85">Region code</div>
@@ -314,37 +458,31 @@ export default function LeaderboardPage() {
               </div>
             ) : null}
 
-            <button
-              onClick={fetchBoard}
-              className={cx(
-                "group relative overflow-hidden w-full rounded-[28px] border border-blue-300/25",
-                "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
-                "px-5 py-4 text-left transition touch-manipulation",
-                "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
-                "active:scale-[0.98]"
-              )}
-            >
-              <div
-                className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/16 blur-2xl"
-                aria-hidden="true"
-              />
-              <div
-                className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-white/6"
-                aria-hidden="true"
-              />
-              <div className="relative z-[2] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
-                    🔄
-                  </div>
-                  <div>
-                    <div className="text-[15px] font-semibold">Refresh</div>
-                    <div className="mt-1 text-[11px] text-white/65">Reload current top 100</div>
-                  </div>
-                </div>
-                <div className="text-white/55">→</div>
-              </div>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={fetchBoard}
+                className={cx(
+                  "rounded-[28px] border border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 px-5 py-4 text-left transition",
+                  "hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.28)] active:scale-[0.98] touch-manipulation"
+                )}
+              >
+                <div className="text-[13px] font-semibold">Refresh</div>
+                <div className="mt-1 text-[11px] text-white/65">Reload list</div>
+              </button>
+
+              <button
+                onClick={() => {
+                  resetLimit();
+                }}
+                className={cx(
+                  "rounded-[28px] border border-white/10 bg-white/5 px-5 py-4 text-left transition",
+                  "hover:bg-white/8 active:scale-[0.98] touch-manipulation"
+                )}
+              >
+                <div className="text-[13px] font-semibold">Top 5</div>
+                <div className="mt-1 text-[11px] text-white/65">Reset view</div>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -375,81 +513,102 @@ export default function LeaderboardPage() {
             </div>
           ) : rows.length === 0 ? (
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-4 text-white/70">
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-white/5 text-[16px]">
-                  💤
-                </div>
-                <div>
-                  <div className="text-[13px] font-semibold text-white/85">No data yet</div>
-                  <div className="text-[11px] text-white/55">Try refresh in a moment.</div>
-                </div>
-              </div>
+              <div className="text-[13px] font-semibold text-white/85">No data yet</div>
+              <div className="mt-1 text-[11px] text-white/55">Try refresh in a moment.</div>
             </div>
           ) : (
-            rows.map((r) => {
-              const isTop = r.place <= 3;
-              const isHiddenRow = "best_score" in r;
+            <>
+              {rows.map((r) => {
+                const isTop = r.place <= 3;
+                const isHiddenRow = "best_words_count" in r;
+                const isFastRow = "duration_sec" in r;
 
-              return (
-                <div
-                  key={`${r.user_id}-${r.place}`}
-                  className={cx(
-                    "rounded-[28px] border p-4",
-                    isTop ? "border-blue-300/20 bg-blue-500/10" : "border-white/10 bg-white/5"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <PlaceBadge place={r.place} />
+                const rightLabel =
+                  isHiddenRow
+                    ? { title: "Score", val: (r as RowHidden).best_score, icon: "🧩" }
+                    : isFastRow
+                    ? { title: "Best", val: (r as RowFast).best_score, icon: "⚡" }
+                    : { title: "Points", val: (r as RowWP).points_total, icon: "⚡" };
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="truncate text-[14px] font-semibold text-white/95">
-                            {r.username}
+                return (
+                  <div
+                    key={`${r.user_id}-${r.place}`}
+                    className={cx(
+                      "rounded-[28px] border p-4",
+                      isTop ? "border-blue-300/20 bg-blue-500/10" : "border-white/10 bg-white/5"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <PlaceBadge place={r.place} />
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="truncate text-[14px] font-semibold text-white/95">
+                              {r.username}
+                            </div>
+
+                            {"country_code" in r && r.country_code ? (
+                              <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
+                                {r.country_code}
+                              </span>
+                            ) : null}
                           </div>
 
-                          {"country_code" in r && r.country_code ? (
-                            <span className="shrink-0 rounded-full border border-white/12 bg-white/6 px-2 py-0.5 text-[10px] text-white/70">
-                              {r.country_code}
-                            </span>
-                          ) : null}
+                          {!isHiddenRow && !isFastRow ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                                🏷️ {getRank((r as RowWP).points_total)}
+                              </span>
+                            </div>
+                          ) : isHiddenRow ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                                🔤 {(r as RowHidden).best_words_count} words
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
+                                ⏱ {(r as RowFast).duration_sec}s
+                              </span>
+                            </div>
+                          )}
                         </div>
-
-                        {!isHiddenRow ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
-                              🏷️ {getRank((r as RowWP).points_total)}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
-                              🧩 Hidden Word
-                            </span>
-                            <span className="rounded-full border border-white/12 bg-white/6 px-2 py-1 text-[11px] text-white/75">
-                              🔤 {(r as RowHidden).best_words_count} words
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 text-right">
-                      <div className="text-[11px] text-white/55">
-                        {isHiddenRow ? "Score" : "Points"}
                       </div>
 
-                      <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
-                        <span className="text-[14px]">{isHiddenRow ? "🧩" : "⚡"}</span>
-                        <span className="text-[16px] font-extrabold">
-                          {isHiddenRow ? (r as RowHidden).best_score : (r as RowWP).points_total}
-                        </span>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[11px] text-white/55">{rightLabel.title}</div>
+                        <div className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-3 py-2">
+                          <span className="text-[14px]">{rightLabel.icon}</span>
+                          <span className="text-[16px] font-extrabold">{rightLabel.val}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+
+              <div className="pt-2">
+                <button
+                  onClick={loadMore}
+                  disabled={!canLoadMore}
+                  className={cx(
+                    "w-full rounded-[28px] border px-5 py-4 text-left transition active:scale-[0.98] touch-manipulation",
+                    canLoadMore
+                      ? "border-blue-300/25 bg-gradient-to-b from-blue-500/22 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_45px_rgba(59,130,246,0.22)]"
+                      : "border-white/10 bg-white/5 opacity-60"
+                  )}
+                >
+                  <div className="text-[13px] font-semibold">
+                    {canLoadMore ? "Load more" : "All loaded"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-white/65">
+                    {canLoadMore ? "Show more ranks (up to Top 100)" : "You reached Top 100 view"}
+                  </div>
+                </button>
+              </div>
+            </>
           )}
         </section>
 
