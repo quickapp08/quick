@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -92,7 +91,61 @@ function MiniChip({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-/** Big tile (Word/Photo) */
+/** Modal shell (reusable popout) */
+function Popout({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[999] flex items-end justify-center px-4 pb-4 pt-10"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* Backdrop */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+      />
+
+      {/* Sheet */}
+      <div
+        className={cx(
+          "relative w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-slate-950/70",
+          "shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-[14px]"
+        )}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <div className="text-[14px] font-extrabold tracking-tight text-white/90">
+            {title}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className={cx(
+              "grid h-9 w-9 place-items-center rounded-2xl border border-white/10 bg-white/5",
+              "hover:bg-white/8 active:scale-[0.98]"
+            )}
+            aria-label="Close"
+          >
+            <span className="text-[16px] leading-none">✕</span>
+          </button>
+        </div>
+
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Big tile (Word/Photo/Hidden/Fast) */
 function ModeTile({
   title,
   icon,
@@ -117,6 +170,7 @@ function ModeTile({
       ? "border-blue-300/16 bg-gradient-to-b from-blue-500/18 to-white/5"
       : "border-white/10 bg-white/6";
 
+  // ✅ CHANGE: icon has NO surrounding box now
   const inner = (
     <>
       <div
@@ -129,9 +183,9 @@ function ModeTile({
       />
       <div className="relative z-[2] flex items-center justify-between gap-3 px-4 py-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_12px_34px_rgba(0,0,0,0.35)]">
-            <span className="text-[18px] leading-none">{icon}</span>
-          </div>
+          <span className="text-[20px] leading-none" aria-hidden="true">
+            {icon}
+          </span>
           <div className="min-w-0">
             <div className="text-[16px] font-extrabold tracking-tight text-white/95 leading-tight">
               {title}
@@ -156,7 +210,7 @@ function ModeTile({
   );
 }
 
-/** Compact tile (Create/Tournaments) - NO LOCKED BADGE */
+/** Compact tile (Together/Tournaments) */
 function CompactTile({
   title,
   icon,
@@ -187,14 +241,10 @@ function CompactTile({
       />
       <div className="relative z-[2] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={cx(
-              "grid h-11 w-11 place-items-center rounded-2xl border bg-white/6 shadow-[0_12px_34px_rgba(0,0,0,0.35)]",
-              disabledLook ? "border-white/8" : "border-white/10"
-            )}
-          >
-            <span className="text-[18px] leading-none">{icon}</span>
-          </div>
+          {/* ✅ CHANGE: icon has NO surrounding box now */}
+          <span className="text-[20px] leading-none" aria-hidden="true">
+            {icon}
+          </span>
           <div className="min-w-0">
             <div className="text-[15px] font-extrabold tracking-tight text-white/95 leading-tight">
               {title}
@@ -232,6 +282,31 @@ function IconOnlyLink({
   );
 }
 
+function IconOnlyButton({
+  icon,
+  ariaLabel,
+  onClick,
+}: {
+  icon: string;
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className={cx(
+        "grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/6",
+        "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
+        "hover:bg-white/10 active:scale-[0.98]"
+      )}
+    >
+      <span className="text-[18px] leading-none">{icon}</span>
+    </button>
+  );
+}
+
 /* -------------------- Page (logic unchanged) -------------------- */
 
 export default function HomePage() {
@@ -246,6 +321,10 @@ export default function HomePage() {
 
   // ✅ NEW (minimal): avatar_url from profiles
   const [myAvatarUrl, setMyAvatarUrl] = useState<string>("");
+
+  // ✅ NEW: popouts
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -347,6 +426,8 @@ export default function HomePage() {
     setMsg(null);
     setMyStatus(null);
     setMyAvatarUrl("");
+    setNotifOpen(false);
+    setHelpOpen(false);
   };
 
   const openPhoto = () => {
@@ -360,7 +441,6 @@ export default function HomePage() {
   const myOk = myStatus && myStatus.ok === true ? myStatus : null;
 
   const goPickAvatar = () => {
-    // one place where avatar selection lives
     router.push("/profile");
   };
 
@@ -381,6 +461,80 @@ export default function HomePage() {
         <div className="absolute bottom-[-180px] right-[-180px] h-[520px] w-[520px] rounded-full bg-blue-500/10 blur-[80px]" />
       </div>
 
+      {/* Popouts */}
+      {notifOpen ? (
+        <Popout title="Notifications" onClose={() => setNotifOpen(false)}>
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+            <div className="text-[13px] font-semibold text-white/90">
+              No notifications
+            </div>
+            <div className="mt-1 text-[12px] text-white/60">
+              Trenutno nema nikakvih notifikacija.
+            </div>
+          </div>
+        </Popout>
+      ) : null}
+
+      {helpOpen ? (
+        <Popout title="Help" onClose={() => setHelpOpen(false)}>
+          <div className="space-y-2">
+            {[
+              {
+                t: "Word Quick",
+                d: "Pogađaj riječ što brže. Bodovi idu u total i leaderboard.",
+                i: "⌨️",
+              },
+              {
+                t: "Photo Quick",
+                d: "Isto kao Word Quick, ali s fotkama. Dostupno samo kad si prijavljen.",
+                i: "📸",
+              },
+              {
+                t: "Hidden Word",
+                d: "Poseban mode: riječi + score se broji kao ‘best’.",
+                i: "🕵️",
+              },
+              {
+                t: "Fast Round",
+                d: "Brzi mode: igraš na vrijeme i gleda se best score.",
+                i: "⚡",
+              },
+              {
+                t: "Together",
+                d: "Igraš u privatnim sobama s ekipom (rang i chat u sobi).",
+                i: "👥",
+              },
+              {
+                t: "Tournaments",
+                d: "Weekly / Monthly turniri. Kad počne — dođe obavijest (uskoro).",
+                i: "🏟️",
+              },
+            ].map((x) => (
+              <div
+                key={x.t}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-2xl border border-white/10 bg-white/5">
+                    <span className="text-[16px] leading-none" aria-hidden="true">
+                      {x.i}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-white/90">
+                      {x.t}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-white/60">
+                      {x.d}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Popout>
+      ) : null}
+
       <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col px-4 overflow-x-hidden overflow-y-auto">
         <header className="pt-2">
           <div className="flex items-center justify-between">
@@ -394,21 +548,19 @@ export default function HomePage() {
                 icon="🔔"
                 badge={0}
                 ariaLabel="Notifications"
-                onClick={() => {}}
+                onClick={() => setNotifOpen(true)}
               />
             ) : (
               <div className="h-10 w-10" />
             )}
           </div>
 
+          {/* ✅ quick text (NOT in a button / NOT in a box) */}
           <div className="mt-5 flex justify-center">
-  <div className="grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-[10px]">
-    <span className="text-[22px] font-extrabold tracking-tight text-white/95">
-      quick
-    </span>
-  </div>
-</div>
-
+            <span className="text-[30px] font-extrabold tracking-tight text-white/95">
+              quick
+            </span>
+          </div>
 
           {user ? (
             <div className="mt-4">
@@ -422,14 +574,11 @@ export default function HomePage() {
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         <MiniChip icon="🌍" text={`#${myOk?.world_rank ?? "—"}`} />
-                        <MiniChip
-                          icon="⚡"
-                          text={`${myOk?.total_points ?? 0} pts`}
-                        />
+                        <MiniChip icon="⚡" text={`${myOk?.total_points ?? 0} pts`} />
                       </div>
                     </div>
 
-                    {/* ✅ Avatar on Home (click to change) */}
+                    {/* Avatar on Home (click to change) */}
                     <button
                       type="button"
                       onClick={goPickAvatar}
@@ -447,7 +596,6 @@ export default function HomePage() {
                           alt="Avatar"
                           className="h-full w-full object-cover"
                           onError={(e) => {
-                            // if url is stale/bad, fallback to empty
                             (e.currentTarget as HTMLImageElement).style.display = "none";
                           }}
                         />
@@ -455,7 +603,6 @@ export default function HomePage() {
                         <span className="text-[18px]">👤</span>
                       )}
 
-                      {/* green + only when no avatar */}
                       {!hasAvatar ? (
                         <span
                           className={cx(
@@ -479,6 +626,7 @@ export default function HomePage() {
         <section className="mt-5 space-y-3">
           {screen === "welcome" ? (
             <>
+              {/* ✅ Login/Register untouched (only visual already exists, logic unchanged) */}
               <Link
                 href="/auth?mode=login"
                 className={cx(
@@ -497,9 +645,7 @@ export default function HomePage() {
                     Login
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">
-                  ›
-                </div>
+                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
               </Link>
 
               <Link
@@ -520,9 +666,7 @@ export default function HomePage() {
                     Register
                   </div>
                 </div>
-                <div className="relative z-[2] text-white/35 text-[18px]">
-                  ›
-                </div>
+                <div className="relative z-[2] text-white/35 text-[18px]">›</div>
               </Link>
 
               {msg ? (
@@ -534,12 +678,7 @@ export default function HomePage() {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <ModeTile
-                  title="Word Quick"
-                  icon="⌨️"
-                  href="/quick-word"
-                  tone="blue"
-                />
+                <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
                   <ModeTile
                     title="Photo Quick"
@@ -548,54 +687,24 @@ export default function HomePage() {
                     tone="dark"
                   />
                 ) : (
-                  <ModeTile
-                    title="Photo Quick"
-                    icon="📸"
-                    onClick={openPhoto}
-                    tone="dark"
-                  />
+                  <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
                 )}
 
-                <ModeTile
-                  title="Hidden Word"
-                  icon="🕵️"
-                  href="/hidden-word"
-                  tone="blue"
-                />
-
-                <ModeTile
-                  title="Fast Round"
-                  icon="⚡"
-                  href="/fast-round"
-                  tone="blue"
-                />
+                <ModeTile title="Hidden Word" icon="🕵️" href="/hidden-word" tone="blue" />
+                <ModeTile title="Fast Round" icon="⚡" href="/fast-round" tone="blue" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <CompactTile
-                  title="Together"
-                  icon="👥"
-                  onClick={() => router.push("/create-own")}
-                />
-                <CompactTile
-                  title="Tournaments"
-                  icon="🏟️"
-                  onClick={() => router.push("/tournaments")}
-                />
+                <CompactTile title="Together" icon="👥" onClick={() => router.push("/create-own")} />
+                <CompactTile title="Tournaments" icon="🏟️" onClick={() => router.push("/tournaments")} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <IconOnlyLink
-                    href="/leaderboard"
-                    icon="🏆"
-                    ariaLabel="Leaderboard"
-                  />
-                  <IconOnlyLink
-                    href="/settings"
-                    icon="⚙️"
-                    ariaLabel="Settings"
-                  />
+                  <IconOnlyLink href="/leaderboard" icon="🏆" ariaLabel="Leaderboard" />
+                  <IconOnlyLink href="/settings" icon="⚙️" ariaLabel="Settings" />
+                  {/* ✅ NEW: Help icon + popout */}
+                  <IconOnlyButton icon="❔" ariaLabel="Help" onClick={() => setHelpOpen(true)} />
                 </div>
 
                 <button
