@@ -879,8 +879,7 @@ export default function HiddenWordPage() {
             }}
           >
             <div className="mx-auto max-w-md px-4">
-              <div className="pointer-events-none absolute inset-x-0 -top-10 h-10 bg-gradient-to-t from-slate-950/90 to-transparent" />
-
+                
               {phase === "setup" ? (
                 <PrimaryCTA
                   title={dict && dictSet ? "Start" : "Loading…"}
