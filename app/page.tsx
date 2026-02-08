@@ -409,7 +409,7 @@ export default function HomePage() {
                 width={96}
                 height={96}
                 priority
-                className="h-[48px] w-[48px]"
+                className="h-[96px] w-[96px]"
               />
             </div>
           </div>
