@@ -37,10 +37,7 @@ function Icon({
 
   return (
     <div
-      className={cx(
-        "grid h-10 w-10 place-items-center rounded-2xl border",
-        cls
-      )}
+      className={cx("grid h-10 w-10 place-items-center rounded-2xl border", cls)}
       aria-hidden="true"
     >
       <span className="text-[16px] leading-none">{children}</span>
@@ -114,7 +111,6 @@ export default function SettingsPage() {
           </div>
         </header>
 
-        {/* Hero / Primary action */}
         <section className="mt-4">
           <Link
             href="/profile"
@@ -128,9 +124,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3">
                 <Icon tone="blue">👤</Icon>
                 <div>
-                  <div className="text-[15px] font-semibold text-white/95">
-                    Profile
-                  </div>
+                  <div className="text-[15px] font-semibold text-white/95">Profile</div>
                   <div className="mt-0.5 text-[12px] text-white/65">
                     Nickname, bio, avatar
                   </div>
@@ -143,7 +137,6 @@ export default function SettingsPage() {
           </Link>
         </section>
 
-        {/* List */}
         <section className="mt-4 space-y-2">
           <div className="px-1">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
@@ -159,8 +152,9 @@ export default function SettingsPage() {
           />
 
           <RowLink
+            href="/auth?mode=login"
             title="Account"
-            subtitle="Login / Register / Logout — coming next"
+            subtitle="Login / Register / Logout"
             icon="🔒"
             tone="slate"
           />
@@ -173,12 +167,9 @@ export default function SettingsPage() {
           />
         </section>
 
-        {/* Subtle info card */}
         <section className="mt-3">
           <div className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3">
-            <div className="text-[12px] font-semibold text-white/80">
-              Tip
-            </div>
+            <div className="text-[12px] font-semibold text-white/80">Tip</div>
             <div className="mt-0.5 text-[12px] text-white/55">
               We’ll keep Settings minimal so it stays fast and clean on mobile.
             </div>

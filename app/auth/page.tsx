@@ -8,10 +8,6 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/**
- * ✅ Next.js zahtijeva da useSearchParams() bude unutar Suspense boundary.
- * Zato Page samo wrapa AuthInner u <Suspense>.
- */
 export default function AuthPage() {
   return (
     <Suspense
@@ -42,6 +38,18 @@ function msgBox(msg: string | null) {
   );
 }
 
+function normalizeUsername(raw: string) {
+  // only: letters, numbers, underscore. lowercase stored.
+  return raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+}
+
+function isValidUsername(u: string) {
+  if (u.length < 3) return "Username must be at least 3 characters.";
+  if (u.length > 16) return "Username must be max 16 characters.";
+  if (!/^[a-z0-9_]+$/.test(u)) return "Use only letters, numbers, underscore.";
+  return null;
+}
+
 function AuthInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -57,10 +65,12 @@ function AuthInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // ✅ NEW: username (required for register)
+  const [username, setUsername] = useState("");
+
   const [isAuthed, setIsAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  // session state
   useEffect(() => {
     let mounted = true;
 
@@ -101,7 +111,6 @@ function AuthInner() {
       return;
     }
 
-    // ✅ nakon login-a: nazad na home + refresh
     router.push("/");
     router.refresh();
   }
@@ -110,20 +119,77 @@ function AuthInner() {
     setLoading(true);
     setMsg(null);
 
-    // Najsigurnije: bez email confirm komplikacija sad (kasnije ćemo)
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
+    const cleanEmail = email.trim();
+    const cleanUsername = normalizeUsername(username);
+
+    const errU = isValidUsername(cleanUsername);
+    if (errU) {
+      setLoading(false);
+      setMsg(errU);
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
       password,
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       setMsg(error.message);
       return;
     }
 
-    // ✅ nakon register-a: nazad na home + refresh
+    // ✅ make sure profile exists + set username
+    // signUp may or may not return session depending on email confirm settings
+    const uid = data.user?.id;
+
+    if (!uid) {
+      // fallback: try getUser
+      const res = await supabase.auth.getUser();
+      const uid2 = res.data.user?.id;
+      if (!uid2) {
+        setLoading(false);
+        setMsg("Account created, but user session not ready. Try login.");
+        router.push("/auth?mode=login");
+        return;
+      }
+
+      const { error: upErr2 } = await supabase
+        .from("profiles")
+        .upsert({ user_id: uid2, username: cleanUsername }, { onConflict: "user_id" });
+
+      setLoading(false);
+
+      if (upErr2) {
+        // Most common: username already taken
+        setMsg(upErr2.message.includes("profiles_username")
+          ? "Username is already taken. Pick another."
+          : upErr2.message
+        );
+        return;
+      }
+
+      router.push("/");
+      router.refresh();
+      return;
+    }
+
+    const { error: upErr } = await supabase
+      .from("profiles")
+      .upsert({ user_id: uid, username: cleanUsername }, { onConflict: "user_id" });
+
+    setLoading(false);
+
+    if (upErr) {
+      setMsg(
+        upErr.message.includes("profiles_username")
+          ? "Username is already taken. Pick another."
+          : upErr.message
+      );
+      return;
+    }
+
     router.push("/");
     router.refresh();
   }
@@ -145,14 +211,21 @@ function AuthInner() {
     router.refresh();
   }
 
+  const usernameHint = useMemo(() => {
+    if (mode !== "register") return null;
+    const clean = normalizeUsername(username);
+    const err = clean ? isValidUsername(clean) : null;
+    if (!username) return "3–16 chars • letters/numbers/_";
+    if (err) return err;
+    return "Looks good ✅";
+  }, [mode, username]);
+
   return (
     <main className="min-h-[100svh] bg-slate-950 px-4 pb-10 pt-6 text-white">
       <div className="mx-auto w-full max-w-md">
-        {/* Header */}
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              {/* Back */}
               <button
                 onClick={() => router.push("/")}
                 className="mt-1 rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[12px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
@@ -184,7 +257,6 @@ function AuthInner() {
             </div>
           </div>
 
-          {/* Body */}
           {!isAuthed && (
             <div className="mt-5">
               <div className="flex gap-2">
@@ -213,6 +285,23 @@ function AuthInner() {
               </div>
 
               <div className="mt-4 space-y-3">
+                {/* ✅ Username (register only) */}
+                {mode === "register" ? (
+                  <div>
+                    <div className="mb-1 text-[12px] text-white/60">Username</div>
+                    <input
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      autoComplete="username"
+                      className="w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-blue-300/35 focus:ring-2 focus:ring-blue-400/20"
+                      placeholder="e.g. karlo_7"
+                    />
+                    <div className={cx("mt-1 text-[11px]", usernameHint?.includes("✅") ? "text-emerald-200/70" : "text-white/45")}>
+                      {usernameHint}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div>
                   <div className="mb-1 text-[12px] text-white/60">Email</div>
                   <input
@@ -231,9 +320,7 @@ function AuthInner() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     type="password"
-                    autoComplete={
-                      mode === "register" ? "new-password" : "current-password"
-                    }
+                    autoComplete={mode === "register" ? "new-password" : "current-password"}
                     className="w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-blue-300/35 focus:ring-2 focus:ring-blue-400/20"
                     placeholder="••••••••"
                   />
