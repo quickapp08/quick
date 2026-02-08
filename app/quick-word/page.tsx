@@ -8,9 +8,8 @@ import { supabase } from "../../lib/supabase";
 type IntervalMin = 60 | 30;
 const ALL_INTERVALS: IntervalMin[] = [60, 30];
 
-// Offset to prevent overlap:
-// 60m -> 0 offset (e.g. 12:00, 13:00)
-// 30m -> +5 minutes offset (e.g. 12:05, 12:35, 13:05, 13:35)
+// 60m -> 0 offset (12:00, 13:00)
+// 30m -> +5min offset (12:05, 12:35, 13:05, 13:35)
 const OFFSETS_MS: Record<IntervalMin, number> = {
   60: 0,
   30: 5 * 60 * 1000,
@@ -25,7 +24,7 @@ function TopBar({ title }: { title: string }) {
     <div className="flex items-center justify-between">
       <Link
         href="/"
-        className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/80 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+        className="rounded-2xl border border-white/12 bg-white/6 px-3 py-2 text-[13px] text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
       >
         ← Back
       </Link>
@@ -42,7 +41,7 @@ function msToClock(ms: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// Interval helpers with offset support (prevents 30/60 overlap)
+// Interval helpers with offset support
 function floorToIntervalStartMs(nowMs: number, intervalMin: number, offsetMs: number) {
   const intervalMs = intervalMin * 60 * 1000;
   const shifted = nowMs - offsetMs;
@@ -84,7 +83,7 @@ type ResultState = {
   interval: IntervalMin;
   points: number;
   serverError?: string;
-  serverAnswer?: string;
+  serverAnswer?: string; // correct answer
 };
 
 type SubmitWordResponse =
@@ -113,7 +112,7 @@ type GetCurrentWordResponse =
     }
   | { ok: false; error: string };
 
-// ---------- stable (seeded) scramble so it NEVER keeps changing ----------
+// ---------- stable scramble ----------
 function hashToUint32(str: string) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -137,9 +136,23 @@ function scrambleWordSeeded(word: string, seedKey: string) {
     const j = Math.floor(rand() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return arr.join("");
+  const out = arr.join("");
+  return out === word && word.length >= 2 ? word[1] + word[0] + word.slice(2) : out;
 }
-// -----------------------------------------------------------------------
+// -----------------------------------
+
+type AttemptStore = {
+  submitted: boolean;
+  correct?: boolean;
+  points?: number;
+  answer?: string; // correct answer from server
+  userAnswer?: string;
+  ts?: number;
+};
+
+function attemptKey(userId: string, interval: IntervalMin, roundStartMs: number) {
+  return `qw_attempt_v1:${userId}:${interval}:${roundStartMs}`;
+}
 
 export default function QuickWordPage() {
   const router = useRouter();
@@ -154,14 +167,12 @@ export default function QuickWordPage() {
     const boot = async () => {
       const { data } = await supabase.auth.getUser();
       const uid = data?.user?.id ?? null;
-
       if (!alive) return;
 
       if (!uid) {
         router.replace("/login");
         return;
       }
-
       setUserId(uid);
       setAuthReady(true);
     };
@@ -195,9 +206,13 @@ export default function QuickWordPage() {
   const [result, setResult] = useState<ResultState | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [serverWord, setServerWord] = useState<string>(""); // keep (even if not shown)
+  const [serverWord, setServerWord] = useState<string>(""); // keep
   const [scrambled, setScrambled] = useState<string>("");
 
+  // 1-attempt lock per round
+  const [attempt, setAttempt] = useState<AttemptStore>({ submitted: false });
+
+  // notifications stuff (keep)
   const notifiedKeySetRef = useRef<Set<string>>(new Set());
   const prevMsLeftRef = useRef<Record<string, number>>({});
 
@@ -265,32 +280,44 @@ export default function QuickWordPage() {
     return nextDrop.dropMs;
   }, [activeWindow, nextDrop.dropMs]);
 
-  // ✅ STABLE KEY so effects don't re-run every render
-  const activeWindowKey = useMemo(() => {
-    if (!activeWindow) return null;
-    return `${activeWindow.interval}:${activeWindow.startMs}`;
-  }, [activeWindow?.interval, activeWindow?.startMs]);
+  // stable key per round
+  const activeRoundKey = useMemo(() => {
+    // Use the ROUND START even outside window so we can keep UI stable.
+    // When window is not active, this equals next drop time.
+    return `${activeInterval}:${activeRoundStartMs}`;
+  }, [activeInterval, activeRoundStartMs]);
 
+  // Load attempt state from LS for this round
+  useEffect(() => {
+    if (!userId) return;
+    const k = attemptKey(userId, activeInterval, activeRoundStartMs);
+    const stored = readLS<AttemptStore>(k, { submitted: false });
+    setAttempt(stored);
+  }, [userId, activeInterval, activeRoundStartMs]);
+
+  // Load word once per LIVE window (same as before)
   const lastKeyRef = useRef<string | null>(null);
 
-  // ✅ ONLY LOAD WORD ONCE PER WINDOW KEY (no more constant re-scramble)
   useEffect(() => {
     if (!authReady || !userId) return;
-    if (!activeWindowKey) return;
+    if (!activeWindow) return;
 
-    if (lastKeyRef.current !== activeWindowKey) {
-      lastKeyRef.current = activeWindowKey;
+    const liveKey = `${activeWindow.interval}:${activeWindow.startMs}`;
+
+    if (lastKeyRef.current !== liveKey) {
+      lastKeyRef.current = liveKey;
       setAnswer("");
       setResult(null);
       setSubmitting(false);
       setServerWord("");
       setScrambled("");
+      // attempt loaded via other effect (LS)
     }
 
     const load = async () => {
       const clientNow = Date.now();
       const { data, error } = await supabase.rpc("get_current_word", {
-        p_interval_min: activeWindow!.interval,
+        p_interval_min: activeWindow.interval,
       });
 
       if (error) {
@@ -310,14 +337,13 @@ export default function QuickWordPage() {
       setClientNowAtFetch(clientNow);
 
       setServerWord(w);
-      setScrambled(w ? scrambleWordSeeded(w, activeWindowKey) : "");
+      setScrambled(w ? scrambleWordSeeded(w, liveKey) : "");
     };
 
     load();
-    // IMPORTANT: dependencies are stable strings/numbers, not the activeWindow object
-  }, [activeWindowKey, authReady, userId]);
+  }, [authReady, userId, activeWindow]);
 
-  // ✅ FIXED notifications: fire only when crossing <= 1 minute
+  // notifications (unchanged)
   useEffect(() => {
     if (!authReady || !userId) return;
     if (!participate) return;
@@ -346,9 +372,7 @@ export default function QuickWordPage() {
 
       if (Notification.permission === "granted") {
         try {
-          new Notification("Quick — Word incoming", {
-            body: "Word incoming in 1 minute",
-          });
+          new Notification("Quick — Word incoming", { body: "Word incoming in 1 minute" });
         } catch (e) {
           console.warn("Notification failed:", e);
         }
@@ -371,9 +395,7 @@ export default function QuickWordPage() {
     }
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        alert("Notifications are disabled. Please allow them to get alerts.");
-      }
+      if (perm !== "granted") alert("Notifications are disabled. Please allow them to get alerts.");
     } catch (e) {
       console.warn(e);
       alert("Notifications permission request failed on this device/browser.");
@@ -387,15 +409,25 @@ export default function QuickWordPage() {
 
   const headerRight = useMemo(() => {
     if (activeWindow) {
-      return `Ends: ${new Date(activeWindow.endMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      return `Ends ${new Date(activeWindow.endMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     }
-    return `Starts: ${new Date(nextDrop.dropMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return `Starts ${new Date(nextDrop.dropMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   }, [activeWindow, nextDrop.dropMs]);
+
+  const locked = useMemo(() => {
+    // Lock if already submitted in this round (even if window still active)
+    return !!attempt.submitted;
+  }, [attempt.submitted]);
+
+  const canType = useMemo(() => {
+    return !!activeWindow && !submitting && !locked;
+  }, [activeWindow, submitting, locked]);
 
   const onSend = async () => {
     if (!authReady || !userId) return;
     if (!activeWindow) return;
     if (submitting) return;
+    if (locked) return;
 
     setSubmitting(true);
     setResult(null);
@@ -438,14 +470,27 @@ export default function QuickWordPage() {
     setServerNowAtFetch(serverNowMs);
     setClientNowAtFetch(Date.now());
 
-    setResult({
+    const newResult: ResultState = {
       ok: true,
       correct: res.correct,
       ms: Number(res.ms_from_start ?? 0),
       interval: intervalMin,
       points: Number(res.points ?? 0),
       serverAnswer: String(res.answer ?? ""),
-    });
+    };
+    setResult(newResult);
+
+    // ✅ lock for this round
+    const store: AttemptStore = {
+      submitted: true,
+      correct: !!res.correct,
+      points: Number(res.points ?? 0),
+      answer: String(res.answer ?? ""),
+      userAnswer,
+      ts: Date.now(),
+    };
+    setAttempt(store);
+    writeLS(attemptKey(userId, intervalMin as IntervalMin, activeWindow.startMs), store);
 
     setSubmitting(false);
   };
@@ -457,10 +502,7 @@ export default function QuickWordPage() {
   if (!authReady || !userId) {
     return (
       <main
-        className={cx(
-          "min-h-[100svh] w-full",
-          "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
-        )}
+        className={cx("min-h-[100svh] w-full", "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white")}
         style={{
           paddingTop: "max(env(safe-area-inset-top), 18px)",
           paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
@@ -479,57 +521,62 @@ export default function QuickWordPage() {
 
   return (
     <main
-      className={cx(
-        "min-h-[100svh] w-full",
-        "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white"
-      )}
+      className={cx("min-h-[100svh] w-full", "bg-gradient-to-b from-slate-950 via-slate-950 to-blue-950 text-white")}
       style={{
         paddingTop: "max(env(safe-area-inset-top), 18px)",
         paddingBottom: "max(env(safe-area-inset-bottom), 18px)",
       }}
     >
-      {/* Mobile-first: keep content within viewport, avoid scroll.
-         We use a compact header + main "game card", settings collapsed. */}
       <div className="mx-auto flex min-h-[100svh] max-w-md flex-col px-4">
-        {/* Compact header */}
+        {/* Header */}
         <header className="pt-2">
           <TopBar title="Word Quick" />
+
           <div className="mt-4 flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <h1 className="text-[22px] font-bold tracking-tight">Word Quick</h1>
               <div className="mt-1 text-[12px] text-white/60">
-                {activeWindow ? "Answer window is live" : "Waiting for next drop"} •{" "}
+                {activeWindow ? "LIVE window" : "Waiting"} •{" "}
                 <span className="text-white/75">{headerRight}</span>
+              </div>
+              <div className="mt-1 text-[11px] text-white/45">
+                Round key: {activeRoundKey}
               </div>
             </div>
 
-            {/* tiny status pill */}
-            <div
-              className={cx(
-                "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                activeWindow ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100" : "border-blue-300/25 bg-blue-500/10 text-blue-100"
-              )}
-              title={activeWindow ? "You can answer now" : "Word is hidden until start"}
-            >
-              {activeWindow ? "LIVE" : "SOON"}
+            <div className="flex flex-col items-end gap-2">
+              <div
+                className={cx(
+                  "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  activeWindow ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100" : "border-blue-300/25 bg-blue-500/10 text-blue-100"
+                )}
+              >
+                {activeWindow ? "LIVE" : "SOON"}
+              </div>
+
+              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
+                ⏱ {timeLabel}
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Main gameplay area (fits in one screen) */}
+        {/* Main (everything up top) */}
         <section className="mt-4 space-y-3">
-          {/* Game card */}
+          {/* Scramble card */}
           <div
             className={cx(
-              "rounded-2xl border p-4",
+              "rounded-[22px] border p-4 backdrop-blur-xl",
               activeWindow ? "border-emerald-400/20 bg-emerald-500/10" : "border-blue-300/20 bg-blue-500/10"
             )}
           >
             <div className="flex items-center justify-between">
               <div className="text-[12px] text-white/70">
-                {activeWindow ? `2 min window • ${activeInterval} min` : `Next word • ${nextDrop.interval} min`}
+                {activeWindow ? `2 min window • ${activeInterval} min` : `Next drop • ${nextDrop.interval} min`}
               </div>
-              <div className="text-[12px] font-semibold text-white/85">{timeLabel}</div>
+              <div className={cx("text-[11px] font-semibold", locked ? "text-rose-100" : "text-white/80")}>
+                {locked ? "Locked (1 attempt used)" : "1 attempt"}
+              </div>
             </div>
 
             <div className="mt-3">
@@ -542,37 +589,47 @@ export default function QuickWordPage() {
               )}
             </div>
 
-            {/* small hint line */}
-            <div className="mt-3 text-[11px] text-white/55">
-              Case doesn’t matter. You have <b>2 minutes</b> to submit.
-            </div>
+            {/* After attempt: reveal answer */}
+            {locked && attempt.answer ? (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/25 p-3">
+                <div className="text-[11px] text-white/55">Correct word</div>
+                <div className="mt-1 text-[16px] font-extrabold tracking-tight text-white/90">
+                  {attempt.answer}
+                </div>
+                <div className="mt-1 text-[11px] text-white/55">
+                  Your answer: <span className="text-white/80">{attempt.userAnswer || "—"}</span>
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          {/* Input + Send (compact) */}
-          <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <label className="block text-[12px] text-white/70">Type the correct word</label>
+          {/* Input + Send */}
+          <div className="rounded-[22px] border border-white/12 bg-white/6 p-4">
+            <div className="flex items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] text-white/70">Type the correct word</div>
                 <input
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
-                  placeholder={activeWindow ? "Type here..." : "Wait for the word..."}
-                  disabled={!activeWindow || submitting}
+                  placeholder={
+                    !activeWindow ? "Wait for the round…" : locked ? "Locked until next round" : "Type here…"
+                  }
+                  disabled={!canType}
                   className={cx(
-                    "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
-                    activeWindow
-                      ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
-                      : "border-white/8 bg-slate-950/20 text-white/40 placeholder:text-white/25"
+                    "mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/25",
+                    canType
+                      ? "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35 focus:border-white/25"
+                      : "border-white/10 bg-slate-950/20 text-white/40 placeholder:text-white/25"
                   )}
                 />
               </div>
 
               <button
                 onClick={onSend}
-                disabled={!activeWindow || submitting}
+                disabled={!canType || answer.trim().length === 0}
                 className={cx(
                   "shrink-0 rounded-2xl border px-4 py-3 text-[13px] font-semibold transition active:scale-[0.98] touch-manipulation",
-                  activeWindow && !submitting
+                  canType && answer.trim().length > 0
                     ? "border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]"
                     : "border-white/10 bg-white/5 opacity-50"
                 )}
@@ -582,11 +639,11 @@ export default function QuickWordPage() {
               </button>
             </div>
 
-            {/* Result (compact, doesn’t push layout too much) */}
+            {/* Result */}
             {result ? (
               <div
                 className={cx(
-                  "mt-3 rounded-xl border px-3 py-2",
+                  "mt-3 rounded-2xl border px-3 py-2",
                   result.ok && result.correct
                     ? "border-emerald-400/25 bg-emerald-500/10"
                     : "border-rose-400/25 bg-rose-500/10"
@@ -609,14 +666,25 @@ export default function QuickWordPage() {
                 )}
               </div>
             ) : null}
+
+            {/* Locked hint */}
+            {locked ? (
+              <div className="mt-2 text-[11px] text-white/55">
+                You already used your attempt. Next round unlocks automatically.
+              </div>
+            ) : (
+              <div className="mt-2 text-[11px] text-white/55">
+                One attempt only. If you miss, we’ll reveal the correct word.
+              </div>
+            )}
           </div>
 
-          {/* Settings collapsed (no scroll) */}
-          <details className="rounded-2xl border border-white/12 bg-white/6">
+          {/* Settings (collapsed) */}
+          <details className="rounded-[22px] border border-white/12 bg-white/6">
             <summary className="cursor-pointer list-none px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[13px] font-semibold text-white/85">Game settings</div>
+                  <div className="text-[13px] font-semibold text-white/85">Settings</div>
                   <div className="mt-0.5 text-[11px] text-white/55">
                     Participation • Intervals • Notifications
                   </div>
@@ -642,7 +710,7 @@ export default function QuickWordPage() {
                 {ALL_INTERVALS.map((i) => (
                   <label
                     key={i}
-                    className="flex items-center justify-between rounded-xl border border-white/12 bg-white/5 px-3 py-2"
+                    className="flex items-center justify-between rounded-2xl border border-white/12 bg-white/5 px-3 py-2"
                   >
                     <div className="flex items-center gap-3">
                       <input
