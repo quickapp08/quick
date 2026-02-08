@@ -53,7 +53,7 @@ function rankTone(rank: string) {
 /** ✅ 8 predefiniranih avatara (local) */
 const AVATARS: Array<{ id: number; src: string }> = Array.from({ length: 8 }).map((_, idx) => {
   const n = String(idx + 1).padStart(2, "0");
-  return { id: idx + 1, src: `/avatars/a${n}.png` };
+  return { id: idx + 1, src: `/avatars/a${n}.webp` };
 });
 
 export default function ProfilePage() {
@@ -290,7 +290,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-2 text-[11px] text-white/45">
-              Putanja: <span className="text-white/70">/public/avatars/a01.png → /avatars/a01.png</span>
+              Putanja: <span className="text-white/70">/public/avatars/a01.webp → /avatars/a01.webp</span>
             </div>
           </div>
 
@@ -355,7 +355,7 @@ export default function ProfilePage() {
                   <input
                     value={avatarUrl}
                     onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="https://… ili /avatars/a01.png"
+                    placeholder="https://… ili /avatars/a01.webp"
                     disabled={loading || saving}
                     className={cx(
                       "w-full rounded-2xl border px-4 py-3 text-[15px] outline-none",
