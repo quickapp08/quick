@@ -39,9 +39,13 @@ function pointsForLen(n: number) {
   return 3; // 6+
 }
 
+function normalizeWord(raw: string) {
+  return raw.toLowerCase().replace(/[^a-z]/g, "");
+}
+
 function countLetters(str: string) {
   const map: Record<string, number> = {};
-  for (const ch of str.toUpperCase()) map[ch] = (map[ch] || 0) + 1;
+  for (const ch of str.toUpperCase().replace(/[^A-Z]/g, "")) map[ch] = (map[ch] || 0) + 1;
   return map;
 }
 
@@ -86,7 +90,6 @@ function unionLettersForWords(words: string[]) {
       need[ch] = Math.max(need[ch] || 0, local[ch]);
     }
   }
-  // expand multiset into string
   let out = "";
   const keys = Object.keys(need).sort();
   for (const ch of keys) out += ch.repeat(need[ch] || 0);
@@ -101,6 +104,22 @@ function shuffleStringDeterministic(str: string, seedKey: string) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr.join("");
+}
+
+// Reject letters that contain too-obvious chunks from base words (e.g. "EAST", "RING")
+function containsObviousChunk(letters: string, baseWords: string[]) {
+  const L = letters.toUpperCase();
+  for (const w of baseWords) {
+    const up = w.toUpperCase();
+    // check contiguous substrings length 4..6 (more "obvious" visually)
+    for (let k = 4; k <= Math.min(6, up.length); k++) {
+      for (let i = 0; i + k <= up.length; i++) {
+        const sub = up.slice(i, i + k);
+        if (L.includes(sub)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 export default function HiddenWordPage() {
@@ -158,7 +177,7 @@ export default function HiddenWordPage() {
 
   const loadDictionary = async () => {
     setDictErr(null);
-    // keep it simple: pull all
+
     const { data, error } = await supabase
       .from("hidden_word_dictionary")
       .select("word,len")
@@ -168,10 +187,19 @@ export default function HiddenWordPage() {
       setDictErr(error.message);
       return;
     }
-    const rows = (data ?? []).map((r: any) => ({
-      word: String(r.word || "").toLowerCase(),
-      len: Number(r.len || String(r.word || "").length),
-    })) as DictWord[];
+
+    const rowsRaw = (data ?? []).map((r: any) => {
+      const clean = normalizeWord(String(r.word || ""));
+      return {
+        word: clean,
+        len: Number(r.len ?? clean.length),
+      };
+    });
+
+    // keep only valid a-z words, len 2..12 (feel free to tweak)
+    const rows = rowsRaw
+      .filter((x) => x.word && /^[a-z]+$/.test(x.word) && x.word.length >= 2 && x.word.length <= 12)
+      .map((x) => ({ word: x.word, len: x.word.length })) as DictWord[];
 
     setDict(rows);
     setDictSet(new Set(rows.map((x) => x.word)));
@@ -179,14 +207,12 @@ export default function HiddenWordPage() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    // load once
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     loadDictionary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady, userId]);
 
   // round state
-  const [roundKey, setRoundKey] = useState("");
   const [startMs, setStartMs] = useState(0);
 
   const [letters, setLetters] = useState("");
@@ -199,7 +225,12 @@ export default function HiddenWordPage() {
   const foundSet = useMemo(() => new Set(found), [found]);
 
   const [score, setScore] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
+
+  // nicer toast system
+  const [toast, setToast] = useState<{ title: string; body?: string; tone: "ok" | "warn" } | null>(
+    null
+  );
+  const toastTimer = useRef<number | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -211,69 +242,97 @@ export default function HiddenWordPage() {
 
   const timeLabel = useMemo(() => msToClock(msLeft), [msLeft]);
 
-  const flash = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 900);
+  const showToast = (title: string, body: string | undefined, tone: "ok" | "warn" = "ok") => {
+    setToast({ title, body, tone });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1100);
   };
 
-  // Generate letters (10–14) that guarantee >=10 dictionary words
+  // Generate letters (10–14) that guarantee >=10 dictionary words and avoid obvious chunks
   const generateLettersGuaranteed = (seedKey: string) => {
-    if (!dict || dict.length < 50) return { letters: "", guaranteedWords: [] as string[] };
+    if (!dict || dict.length < 60) return { letters: "", guaranteedWords: [] as string[] };
 
     const rand = mulberry32(hashToUint32(seedKey));
 
-    // prefer mid-length words for better overlap
     const candidates = dict.filter((w) => w.len >= 3 && w.len <= 7);
-    const pick = () => candidates[Math.floor(rand() * candidates.length)]?.word || "apple";
 
-    for (let attempt = 0; attempt < 200; attempt++) {
-      // pick 10 base words (guaranteed solvable)
+    const pick = () => {
+      const w = candidates[Math.floor(rand() * candidates.length)];
+      return w?.word || "apple";
+    };
+
+    const targetLen = 10 + Math.floor(rand() * 5); // 10..14
+
+    for (let attempt = 0; attempt < 400; attempt++) {
+      // pick 10 base words
       const base: string[] = [];
       while (base.length < 10) {
         const w = pick();
         if (!base.includes(w)) base.push(w);
       }
 
-      let L = unionLettersForWords(base); // multiset union
-      // if too short, add extra letters from another word
-      while (L.length < 10) {
+      let L = unionLettersForWords(base);
+
+      // grow if too short
+      while (L.length < targetLen) {
         const extra = pick();
         L = unionLettersForWords([...base, extra]);
       }
 
-      // if too long, retry (we need 10–14)
+      // if too long, retry
       if (L.length > 14) continue;
 
-      // shuffle deterministically so it looks random
-      const mixed = shuffleStringDeterministic(L, seedKey).slice(0, 14);
+      // add 0-2 "decoy" letters to make patterns less readable (still keep <=14)
+      // use letters from random candidate words so it stays “realistic”
+      let withDecoys = L;
+      const decoyCount = Math.floor(rand() * 3); // 0..2
+      for (let i = 0; i < decoyCount; i++) {
+        const w = pick().toUpperCase();
+        const ch = w[Math.floor(rand() * w.length)] || "A";
+        if (withDecoys.length < 14) withDecoys += ch;
+      }
 
-      // Now ensure >=10 words from dictionary can be built (not just base list)
-      const map = countLetters(mixed);
+      // shuffle hard
+      const mixed = shuffleStringDeterministic(withDecoys, seedKey).toUpperCase();
+
+      // ensure exact 10..14
+      const trimmed = mixed.slice(0, Math.min(14, mixed.length));
+      if (trimmed.length < 10) continue;
+
+      // avoid obvious readable chunks from base words
+      if (containsObviousChunk(trimmed, base)) continue;
+
+      // ensure >=10 possible words from dictionary (strict)
+      const map = countLetters(trimmed);
       const possible = candidates
-        .filter((w) => w.len >= 2 && w.len <= 10)
         .map((w) => w.word)
         .filter((w) => canBuild(w, map));
 
-      // require at least 10 unique possible words
       const uniquePossible = Array.from(new Set(possible));
       if (uniquePossible.length >= 10) {
-        return { letters: mixed.toUpperCase(), guaranteedWords: base };
+        // also ensure there is at least some diversity: not all 3-letter
+        const longCount = uniquePossible.filter((w) => w.length >= 6).length;
+        if (longCount < 2) continue;
+
+        return { letters: trimmed, guaranteedWords: base };
       }
     }
 
-    // fallback: just return something from fixed pool (still playable)
-    const fallback = "EASTRINGLOW".toUpperCase();
-    return { letters: fallback, guaranteedWords: [] as string[] };
+    // fallback: still from dict, shuffled, not a readable phrase
+    const fallbackWords = (dict.filter((w) => w.len >= 4 && w.len <= 7).slice(0, 12) || []).map(
+      (x) => x.word
+    );
+    const fb = unionLettersForWords(fallbackWords).slice(0, 14);
+    return { letters: shuffleStringDeterministic(fb, seedKey).toUpperCase(), guaranteedWords: [] };
   };
 
   const startRound = () => {
     if (!dict || !dictSet) {
-      flash("Dictionary not loaded yet");
+      showToast("Loading…", "Dictionary is not ready yet", "warn");
       return;
     }
 
     const key = `${Date.now()}:${Math.random().toString(16).slice(2)}`;
-    setRoundKey(key);
 
     const gen = generateLettersGuaranteed(key);
     setLetters(gen.letters);
@@ -307,13 +366,10 @@ export default function HiddenWordPage() {
         score,
       });
 
-      if (error) {
-        setSaveMsg("Score not saved yet (check table/policy). Gameplay is OK.");
-      } else {
-        setSaveMsg("Score saved ✅");
-      }
+      if (error) setSaveMsg("Score not saved (check RLS/policy). Gameplay is OK.");
+      else setSaveMsg("Score saved ✅");
     } catch {
-      setSaveMsg("Score not saved yet (DB not ready).");
+      setSaveMsg("Score not saved (DB not ready).");
     } finally {
       setSaving(false);
     }
@@ -330,34 +386,39 @@ export default function HiddenWordPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msLeft, phase]);
 
+  const praiseForWord = (len: number) => {
+    if (len <= 3) return "Bravo!";
+    if (len >= 6) return "Fantastic!";
+    return "Nice!";
+  };
+
   const submitWord = () => {
     if (phase !== "playing") return;
     if (!dictSet) return;
 
-    const raw = input.trim().toLowerCase();
-    const word = raw.replace(/[^a-z]/g, "");
+    const word = normalizeWord(input);
     if (!word) return;
 
     if (word.length < 2) {
-      flash("Too short");
+      showToast("Too short", "Try 2+ letters", "warn");
       return;
     }
 
-    // must exist in system (dictionary)
+    // strict dictionary (after normalization)
     if (!dictSet.has(word)) {
-      flash("Word not in dictionary");
+      showToast("Not accepted", "Try another word", "warn");
       setInput("");
       return;
     }
 
     if (foundSet.has(word)) {
-      flash("Already found");
+      showToast("Already found", undefined, "warn");
       setInput("");
       return;
     }
 
     if (!canBuild(word, lettersMap)) {
-      flash("Not possible with these letters");
+      showToast("Not possible", "Letters don't match", "warn");
       setInput("");
       return;
     }
@@ -366,7 +427,8 @@ export default function HiddenWordPage() {
     setFound((prev) => [word, ...prev]);
     setScore((s) => s + pts);
     setInput("");
-    flash(`+${pts}`);
+
+    showToast(praiseForWord(word.length), `+${pts} pts`, "ok");
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -379,7 +441,6 @@ export default function HiddenWordPage() {
   const resetToSetup = () => {
     setPhase("setup");
     setLetters("");
-    setRoundKey("");
     setFound([]);
     setScore(0);
     setInput("");
@@ -387,6 +448,8 @@ export default function HiddenWordPage() {
     setSaving(false);
     setSaveMsg(null);
   };
+
+  const lettersArray = useMemo(() => letters.split("").filter(Boolean), [letters]);
 
   if (!authReady || !userId) {
     return (
@@ -404,7 +467,9 @@ export default function HiddenWordPage() {
           <header className="pt-2">
             <TopBar title="Hidden Word" />
             <h1 className="mt-5 text-2xl font-bold tracking-tight">Hidden Word</h1>
-            <p className="mt-2 text-[13px] leading-relaxed text-white/70">Redirecting to login…</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/70">
+              Redirecting to login…
+            </p>
           </header>
         </div>
       </main>
@@ -427,26 +492,32 @@ export default function HiddenWordPage() {
           <TopBar title="Hidden Word" />
 
           <div className="mt-4 flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-[22px] font-bold tracking-tight">Hidden Word</h1>
+            <div className="min-w-0">
+              <h1 className="text-[22px] font-extrabold tracking-tight">Hidden Word</h1>
               <div className="mt-1 text-[12px] text-white/60">
                 {phase === "setup"
-                  ? "Find as many valid words as you can"
+                  ? "Find as many words as you can in 60 seconds."
                   : phase === "playing"
-                  ? "Enter a word — Enter = submit"
-                  : "Round finished"}
+                  ? "Type a word and hit Enter."
+                  : "Round complete."}
               </div>
             </div>
 
-            <div
-              className={cx(
-                "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                phase === "playing"
-                  ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
-                  : "border-blue-300/25 bg-blue-500/10 text-blue-100"
-              )}
-            >
-              {phase === "playing" ? "LIVE" : "READY"}
+            <div className="shrink-0 flex items-center gap-2">
+              <div
+                className={cx(
+                  "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  phase === "playing"
+                    ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                    : "border-blue-300/25 bg-blue-500/10 text-blue-100"
+                )}
+              >
+                {phase === "playing" ? "LIVE" : "READY"}
+              </div>
+
+              <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold text-white/85">
+                ⏱ {phase === "playing" ? timeLabel : "1:00"}
+              </div>
             </div>
           </div>
 
@@ -458,61 +529,77 @@ export default function HiddenWordPage() {
         </header>
 
         <section className="mt-4 space-y-3">
-          <div
-            className={cx(
-              "rounded-2xl border p-4",
-              phase === "playing"
-                ? "border-emerald-400/20 bg-emerald-500/10"
-                : "border-blue-300/20 bg-blue-500/10"
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-[12px] text-white/70">
-                {phase === "setup" ? "Round: 60s" : phase === "playing" ? "Time left" : "Ended"}
-              </div>
-              <div className="text-[12px] font-semibold text-white/85">
-                {phase === "playing" ? timeLabel : "1:00"}
+          {/* Main card */}
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-[10px]">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-500/14 blur-3xl" />
+            <div className="pointer-events-none absolute -left-16 bottom-[-90px] h-48 w-48 rounded-full bg-blue-500/10 blur-3xl" />
+
+            <div className="relative z-[2] flex items-center justify-between">
+              <div className="text-[12px] text-white/65">Score</div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[12px] font-extrabold text-white/90">
+                🧩 {score} pts
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="text-[12px] text-white/60">Letters</div>
-              <div className="mt-2 select-none rounded-2xl border border-white/12 bg-slate-950/35 px-4 py-3">
-                <div className="text-[26px] font-extrabold tracking-[0.16em] text-white/95">
-                  {letters || "—"}
+            <div className="relative z-[2] mt-3">
+              <div className="text-[12px] text-white/65">Letters</div>
+
+              {/* Letters grid (looks like a game, not a string) */}
+              <div className="mt-2 rounded-3xl border border-white/10 bg-slate-950/35 p-3">
+                <div className="grid grid-cols-7 gap-2">
+                  {lettersArray.length ? (
+                    lettersArray.map((ch, idx) => (
+                      <div
+                        key={`${ch}-${idx}`}
+                        className="grid h-10 w-full place-items-center rounded-2xl border border-white/12 bg-white/6 text-[16px] font-extrabold tracking-tight shadow-[0_10px_30px_rgba(0,0,0,0.28)]"
+                      >
+                        {ch}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-span-7 rounded-2xl border border-white/10 bg-white/5 p-4 text-center text-[12px] text-white/60">
+                      Press Start to generate letters.
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="mt-3 flex items-center justify-between">
-              <div className="text-[11px] text-white/55">
-                1–3 letters: 1pt • 4–5: 2pt • 6+: 3pt
-              </div>
-              <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
-                {score} pts
+              <div className="mt-3 flex items-center justify-between">
+                <div className="text-[11px] text-white/50">
+                  1–3: +1 • 4–5: +2 • 6+: +3
+                </div>
+                <div className="text-[11px] text-white/55">
+                  Found: <span className="text-white/85 font-semibold">{found.length}</span>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* Setup */}
           {phase === "setup" ? (
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
               <button
                 onClick={startRound}
                 className={cx(
-                  "w-full rounded-2xl border border-blue-300/25",
-                  "bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-left",
-                  "transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.28)]",
-                  "active:scale-[0.98] touch-manipulation"
+                  "group relative overflow-hidden w-full rounded-3xl border border-blue-300/25",
+                  "bg-gradient-to-b from-blue-500/22 to-blue-500/10",
+                  "px-5 py-4 text-left transition touch-manipulation",
+                  "hover:-translate-y-[1px] hover:border-blue-300/45 hover:shadow-[0_0_45px_rgba(59,130,246,0.28)]",
+                  "active:scale-[0.98]"
                 )}
                 disabled={!dict || !dictSet}
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[13px] font-semibold">
-                      {dict ? "Start" : "Loading words…"}
+                <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-500/16 blur-2xl" />
+                <div className="relative z-[2] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-blue-300/25 bg-blue-500/12 text-[16px]">
+                      ▶️
                     </div>
-                    <div className="mt-0.5 text-[11px] text-white/65">
-                      Letters will guarantee at least 10 valid words
+                    <div>
+                      <div className="text-[15px] font-extrabold">Start</div>
+                      <div className="mt-1 text-[11px] text-white/65">
+                        Letters are generated to be solvable (no obvious combos).
+                      </div>
                     </div>
                   </div>
                   <div className="text-white/55">→</div>
@@ -520,14 +607,15 @@ export default function HiddenWordPage() {
               </button>
 
               <div className="mt-3 text-[11px] text-white/45">
-                Rule: you can’t use a letter more times than it appears.
+                Tip: You can’t reuse a letter more times than it appears.
               </div>
             </div>
           ) : null}
 
+          {/* Playing */}
           {phase === "playing" ? (
             <>
-              <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-end justify-between gap-3">
                   <div className="min-w-0 w-full">
                     <label className="block text-[12px] text-white/70">Type a word</label>
@@ -538,7 +626,7 @@ export default function HiddenWordPage() {
                       onKeyDown={onKeyDown}
                       placeholder="Enter a word..."
                       className={cx(
-                        "mt-2 w-full rounded-xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
+                        "mt-2 w-full rounded-2xl border px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-blue-400/60",
                         "border-white/12 bg-slate-950/40 text-white placeholder:text-white/35"
                       )}
                       autoCapitalize="none"
@@ -552,7 +640,7 @@ export default function HiddenWordPage() {
                     onClick={submitWord}
                     className={cx(
                       "shrink-0 rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3",
-                      "text-[13px] font-semibold transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)]",
+                      "text-[13px] font-extrabold transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)]",
                       "active:scale-[0.98] touch-manipulation"
                     )}
                     style={{ minWidth: 96 }}
@@ -561,31 +649,42 @@ export default function HiddenWordPage() {
                   </button>
                 </div>
 
+                {/* Toast */}
                 {toast ? (
-                  <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/85">
-                    {toast}
+                  <div
+                    className={cx(
+                      "mt-3 rounded-2xl border px-3 py-2",
+                      toast.tone === "ok"
+                        ? "border-emerald-400/25 bg-emerald-500/10"
+                        : "border-rose-400/25 bg-rose-500/10"
+                    )}
+                  >
+                    <div className="text-[12px] font-extrabold text-white/90">{toast.title}</div>
+                    {toast.body ? (
+                      <div className="mt-0.5 text-[11px] text-white/70">{toast.body}</div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="mt-3 text-[11px] text-white/45">
-                    Only dictionary words count.
+                    Keep going — speed matters. ⌁
                   </div>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+              <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold text-white/85">
-                    Found ({found.length})
+                  <div className="text-[12px] font-extrabold text-white/90">
+                    Found words ({found.length})
                   </div>
                   <div className="text-[11px] text-white/55">latest first</div>
                 </div>
 
                 {found.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {found.slice(0, 24).map((w) => (
+                    {found.slice(0, 28).map((w) => (
                       <span
                         key={w}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/85"
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] font-semibold text-white/90"
                       >
                         {w}
                         <span className="text-white/45">+{pointsForLen(w.length)}</span>
@@ -596,43 +695,44 @@ export default function HiddenWordPage() {
                   <div className="mt-3 text-[12px] text-white/55">No words yet.</div>
                 )}
 
-                {found.length > 24 ? (
+                {found.length > 28 ? (
                   <div className="mt-2 text-[11px] text-white/45">
-                    Showing first 24 to keep UI clean.
+                    Showing first 28 to keep UI clean.
                   </div>
                 ) : null}
               </div>
             </>
           ) : null}
 
+          {/* Done */}
           {phase === "done" ? (
-            <div className="rounded-2xl border border-white/12 bg-white/6 p-4">
+            <div className="rounded-3xl border border-white/12 bg-white/6 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[14px] font-extrabold text-white/92">Finished</div>
+                  <div className="text-[15px] font-extrabold text-white/92">Finished</div>
                   <div className="mt-1 text-[12px] text-white/65">
                     Words: <b>{found.length}</b> • Score: <b>{score}</b>
                   </div>
                 </div>
                 <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/85">
-                  {score} pts
+                  🧩 {score} pts
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/80">
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white/80">
                 {saving ? "Saving score…" : saveMsg ?? "Score ready."}
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={resetToSetup}
-                  className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
+                  className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-[13px] font-extrabold text-white/85 transition hover:bg-white/10 active:scale-[0.98] touch-manipulation"
                 >
                   New round
                 </button>
                 <Link
                   href="/leaderboard"
-                  className="rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-center text-[13px] font-semibold text-white/92 transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)] active:scale-[0.98] touch-manipulation"
+                  className="rounded-2xl border border-blue-300/25 bg-gradient-to-b from-blue-500/25 to-blue-500/10 px-4 py-3 text-center text-[13px] font-extrabold text-white/92 transition hover:-translate-y-[1px] hover:shadow-[0_0_40px_rgba(59,130,246,0.22)] active:scale-[0.98] touch-manipulation"
                 >
                   Leaderboard
                 </Link>
