@@ -143,7 +143,12 @@ function ModeTile({
     </>
   );
 
-  if (href) return <Link href={href} className={cx(base, toneCls)}>{inner}</Link>;
+  if (href)
+    return (
+      <Link href={href} className={cx(base, toneCls)}>
+        {inner}
+      </Link>
+    );
   return (
     <button type="button" onClick={onClick} className={cx(base, toneCls)}>
       {inner}
@@ -171,7 +176,9 @@ function CompactTile({
         "relative w-full rounded-3xl border overflow-hidden px-4 py-4 text-left",
         "shadow-[0_16px_48px_rgba(0,0,0,0.42)] backdrop-blur-[10px] transition",
         "active:scale-[0.98] active:opacity-95 hover:bg-white/10",
-        disabledLook ? "border-white/8 bg-white/4 opacity-80" : "border-white/10 bg-white/6"
+        disabledLook
+          ? "border-white/8 bg-white/4 opacity-80"
+          : "border-white/10 bg-white/6"
       )}
     >
       <div
@@ -231,7 +238,9 @@ export default function HomePage() {
   const router = useRouter();
 
   const [screen, setScreen] = useState<Screen>("welcome");
-  const [user, setUser] = useState<null | { id: string; email?: string | null }>(null);
+  const [user, setUser] = useState<null | { id: string; email?: string | null }>(
+    null
+  );
   const [msg, setMsg] = useState<string | null>(null);
   const [myStatus, setMyStatus] = useState<MyStatus | null>(null);
 
@@ -337,7 +346,12 @@ export default function HomePage() {
             </TopPill>
 
             {user ? (
-              <IconBtn icon="🔔" badge={0} ariaLabel="Notifications" onClick={() => {}} />
+              <IconBtn
+                icon="🔔"
+                badge={0}
+                ariaLabel="Notifications"
+                onClick={() => {}}
+              />
             ) : (
               <div className="h-10 w-10" />
             )}
@@ -435,29 +449,33 @@ export default function HomePage() {
             </>
           ) : (
             <>
+              {/* ✅ added Fast Round here (logged-in menu only) */}
               <div className="grid grid-cols-2 gap-3">
                 <ModeTile title="Word Quick" icon="⌨️" href="/quick-word" tone="blue" />
                 {user ? (
-                  <ModeTile title="Photo Quick" icon="📸" onClick={() => router.push("/quick-photo")} tone="blue" />
+                  <ModeTile
+                    title="Photo Quick"
+                    icon="📸"
+                    onClick={() => router.push("/quick-photo")}
+                    tone="blue"
+                  />
                 ) : (
                   <ModeTile title="Photo Quick" icon="📸" onClick={openPhoto} tone="dark" />
                 )}
+
+                <ModeTile
+                  title="Fast Round"
+                  icon="⚡"
+                  href="/fast-round"
+                  tone="blue"
+                />
               </div>
 
               {/* NO locked badge; only muted look */}
               <div className="grid grid-cols-2 gap-3">
-  <CompactTile
-    title="Together"
-    icon="👥"
-    onClick={() => router.push("/create-own")}
-  />
-  <CompactTile
-    title="Tournaments"
-    icon="🏟️"
-    onClick={() => router.push("/tournaments")}
-  />
-</div>
-
+                <CompactTile title="Together" icon="👥" onClick={() => router.push("/create-own")} />
+                <CompactTile title="Tournaments" icon="🏟️" onClick={() => router.push("/tournaments")} />
+              </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
