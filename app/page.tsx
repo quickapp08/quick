@@ -406,8 +406,8 @@ export default function HomePage() {
               <Image
                 src="/quick-logo.png"
                 alt="Quick"
-                width={48}
-                height={48}
+                width={96}
+                height={96}
                 priority
                 className="h-[48px] w-[48px]"
               />
